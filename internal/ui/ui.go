@@ -64,16 +64,10 @@ func Fatal(msg string) {
 	fmt.Printf("\n  %s%s✗ FATAL: %s%s\n\n", Red, Bold, msg, Reset)
 }
 
-// Price prints the cotizacion in a highlighted box
+// Price prints the cotizacion
 func Price(bid float64) {
-	content := fmt.Sprintf("  💵  1 USDT = %.4f BOB  ", bid)
-	border := strings.Repeat("━", len(content))
-
 	fmt.Println()
-	fmt.Printf("        %s%s┏%s┓%s\n", Bold, Cyan, border, Reset)
-	fmt.Printf("        %s%s┃%s%s%s%s┃%s\n",
-		Bold, Cyan, White+Bold, content, Reset, Cyan+Bold, Reset)
-	fmt.Printf("        %s%s┗%s┛%s\n", Bold, Cyan, border, Reset)
+	fmt.Printf("        %s%s💵  1 USDT = %.4f BOB%s\n", White, Bold, bid, Reset)
 	fmt.Println()
 }
 

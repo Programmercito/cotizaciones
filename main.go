@@ -8,6 +8,7 @@ import (
 
 	"cotizaciones/internal/api"
 	"cotizaciones/internal/db"
+	"cotizaciones/internal/git"
 	"cotizaciones/internal/telegram"
 	"cotizaciones/internal/ui"
 
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	jsonOutputPath = "/opt/osbo/codes/cotizaciones/dist/data.json"
-	totalSteps     = 5
+	jsonOutputPath = "/opt/codes/cotizaciones_ng/docs/data.json"
+	ngRepoPath     = "/opt/codes/cotizaciones_ng"
+	totalSteps     = 7
 )
 
 func main() {
@@ -83,12 +85,27 @@ func main() {
 		exitWithError("Error actualizando config: %v", err)
 	}
 
-	// 5. Export all cotizaciones to JSON
-	ui.StepStart(5, totalSteps, "📄", "Exportando cotizaciones a JSON...")
+	// 5. Git pull forzado en el repo del frontend
+	ui.StepStart(5, totalSteps, "🔄", "Actualizando repositorio (git pull forzado)...")
+	if err := git.ForcePull(ngRepoPath); err != nil {
+		exitWithError("Error en git pull: %v", err)
+	}
+	ui.Success(fmt.Sprintf("Repositorio actualizado → %s", ngRepoPath))
+
+	// 6. Export all cotizaciones to JSON
+	ui.StepStart(6, totalSteps, "📄", "Exportando cotizaciones a JSON...")
 	if err := database.ExportCotizacionesToJSON(jsonOutputPath); err != nil {
 		exitWithError("Error exportando JSON: %v", err)
 	}
 	ui.Success(fmt.Sprintf("Archivo generado → %s", jsonOutputPath))
+
+	// 7. Git commit and push
+	ui.StepStart(7, totalSteps, "🚀", "Subiendo cambios al repositorio (git push)...")
+	commitMsg := "data upload"
+	if err := git.CommitAndPush(ngRepoPath, commitMsg); err != nil {
+		exitWithError("Error en git push: %v", err)
+	}
+	ui.Success("Cambios subidos correctamente")
 
 	ui.Done()
 }
