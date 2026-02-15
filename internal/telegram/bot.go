@@ -10,16 +10,23 @@ import (
 
 // Bot wraps the Telegram bot API
 type Bot struct {
-	api *tgbotapi.BotAPI
+	api    *tgbotapi.BotAPI
+	chatID int64
 }
 
-// New creates a new Telegram bot instance
-func New(token string) (*Bot, error) {
+// New creates a new Telegram bot instance bound to a specific chatID
+func New(token, chatID string) (*Bot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("error creating telegram bot: %w", err)
 	}
-	return &Bot{api: bot}, nil
+
+	cid, err := strconv.ParseInt(chatID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid chat ID %q: %w", chatID, err)
+	}
+
+	return &Bot{api: bot, chatID: cid}, nil
 }
 
 // FormatMessage creates a nicely formatted HTML message for the cotizacion
@@ -40,14 +47,9 @@ func FormatMessage(bid float64) string {
 	)
 }
 
-// SendMessage sends a new message to the specified chat
-func (b *Bot) SendMessage(chatID string, text string) (int, error) {
-	id, err := strconv.ParseInt(chatID, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid chat ID %q: %w", chatID, err)
-	}
-
-	msg := tgbotapi.NewMessage(id, text)
+// SendMessage sends a new message and returns the message ID
+func (b *Bot) SendMessage(text string) (int, error) {
+	msg := tgbotapi.NewMessage(b.chatID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 
 	sent, err := b.api.Send(msg)
@@ -58,23 +60,12 @@ func (b *Bot) SendMessage(chatID string, text string) (int, error) {
 	return sent.MessageID, nil
 }
 
-// EditMessage edits an existing message in the specified chat
-func (b *Bot) EditMessage(chatID string, messageID string, text string) error {
-	cid, err := strconv.ParseInt(chatID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid chat ID %q: %w", chatID, err)
-	}
-
-	mid, err := strconv.Atoi(messageID)
-	if err != nil {
-		return fmt.Errorf("invalid message ID %q: %w", messageID, err)
-	}
-
-	edit := tgbotapi.NewEditMessageText(cid, mid, text)
+// EditMessage edits an existing message by its ID
+func (b *Bot) EditMessage(messageID int, text string) error {
+	edit := tgbotapi.NewEditMessageText(b.chatID, messageID, text)
 	edit.ParseMode = tgbotapi.ModeHTML
 
-	_, err = b.api.Send(edit)
-	if err != nil {
+	if _, err := b.api.Send(edit); err != nil {
 		return fmt.Errorf("error editing message: %w", err)
 	}
 

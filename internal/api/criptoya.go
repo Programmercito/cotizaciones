@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -33,13 +32,8 @@ func FetchCotizacion() (*CriptoYaResponse, error) {
 		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
-	}
-
 	var data CriptoYaResponse
-	if err := json.Unmarshal(body, &data); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("error parsing JSON: %w", err)
 	}
 

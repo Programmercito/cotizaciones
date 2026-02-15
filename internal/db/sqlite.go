@@ -11,7 +11,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const dbPath = "/opt/osbo/datausd"
+const (
+	dbPath   = "/opt/osbo/datausd"
+	moneda   = "USDT"
+	exchange = "binancep2p"
+	timeFmt  = "2006-01-02 15:04:05"
+)
 
 // Cotizacion represents a row in the cotizaciones table
 type Cotizacion struct {
@@ -33,7 +38,7 @@ type DB struct {
 	conn *sql.DB
 }
 
-// New opens the SQLite database connection
+// New opens the SQLite database connection and applies performance pragmas
 func New() (*DB, error) {
 	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -44,6 +49,11 @@ func New() (*DB, error) {
 		return nil, fmt.Errorf("error connecting to database: %w", err)
 	}
 
+	// Enable WAL mode for better concurrent read/write performance
+	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return nil, fmt.Errorf("error setting WAL mode: %w", err)
+	}
+
 	return &DB{conn: conn}, nil
 }
 
@@ -52,15 +62,15 @@ func (d *DB) Close() error {
 	return d.conn.Close()
 }
 
-// InsertCotizacion inserts a new cotizacion record
-// Uses current local time instead of API time to avoid duplicate key errors
-// when the API returns the same cached timestamp across consecutive calls
+// InsertCotizacion inserts a new cotizacion record.
+// Uses current local time to avoid duplicate key errors when the API
+// returns the same cached timestamp across consecutive calls.
 func (d *DB) InsertCotizacion(bid float64) error {
-	datetime := time.Now().Format("2006-01-02 15:04:05")
+	datetime := time.Now().Format(timeFmt)
 
 	_, err := d.conn.Exec(
 		"INSERT INTO cotizaciones (moneda, cotizacion, datetime, exchange) VALUES (?, ?, ?, ?)",
-		"USDT", bid, datetime, "binancep2p",
+		moneda, bid, datetime, exchange,
 	)
 	if err != nil {
 		return fmt.Errorf("error inserting cotizacion: %w", err)
@@ -71,7 +81,9 @@ func (d *DB) InsertCotizacion(bid float64) error {
 
 // GetAllCotizaciones retrieves all records from the cotizaciones table
 func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
-	rows, err := d.conn.Query("SELECT moneda, cotizacion, datetime, exchange FROM cotizaciones ORDER BY datetime ASC")
+	rows, err := d.conn.Query(
+		"SELECT moneda, cotizacion, datetime, exchange FROM cotizaciones ORDER BY datetime ASC",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error querying cotizaciones: %w", err)
 	}
@@ -84,6 +96,9 @@ func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		cotizaciones = append(cotizaciones, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
 	return cotizaciones, nil
@@ -101,9 +116,8 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 		return fmt.Errorf("error marshaling JSON: %w", err)
 	}
 
-	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("error creating directory %s: %w", dir, err)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("error creating output directory: %w", err)
 	}
 
 	if err := os.WriteFile(outputPath, data, 0644); err != nil {
@@ -113,7 +127,7 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 	return nil
 }
 
-// GetConfig retrieves the config record
+// GetConfig retrieves the single config record
 func (d *DB) GetConfig() (*Config, error) {
 	var cfg Config
 	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid FROM config LIMIT 1").
@@ -125,7 +139,7 @@ func (d *DB) GetConfig() (*Config, error) {
 }
 
 // UpdateConfig updates the currentdate and messageid in the config table
-func (d *DB) UpdateConfig(currentDate string, messageID string) error {
+func (d *DB) UpdateConfig(currentDate, messageID string) error {
 	_, err := d.conn.Exec(
 		"UPDATE config SET currentdate = ?, messageid = ?",
 		currentDate, messageID,
