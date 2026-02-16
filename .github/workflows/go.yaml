@@ -1,0 +1,38 @@
+name: deployer
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: package
+    
+    - name: config copy files
+      run: |
+        mkdir -p ~/.ssh
+        touch ~/.ssh/known_hosts
+        ssh-keyscan -H ${{ secrets.SERVER }} >> ~/.ssh/known_hosts
+        
+    - name: Deploy to production
+      run: |
+        echo "${{ secrets.KEY }}" > ./private_key
+        chmod 600 ./private_key
+        ls -la
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "cd /opt/cotizaciones && rm -rf *"
+        scp -o StrictHostKeyChecking=no -i ./private_key -r bots-0.0.1-SNAPSHOT.jar ${{ secrets.USER }}@${{ secrets.SERVER }}:/opt/cotizaciones
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "cp /opt/codes/bot-dockers/cotizaciones/docker/cotizaciones.dockerfile /opt/cotizaciones"
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "cd /opt/cotizaciones && ls -la"
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "docker build -t localhost:32000/cotizaciones:latest -f /opt/cotizaciones/cotizaciones.dockerfile /opt/cotizaciones/"
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "docker push localhost:32000/cotizaciones:latest" 
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "cd /opt/codes/bot-dockers && git pull" 
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "microk8s kubectl apply -f /opt/codes/bot-dockers/cotizaciones/kub/services.yaml" 
+        ssh -o StrictHostKeyChecking=no -i ./private_key ${{ secrets.USER }}@${{ secrets.SERVER }} "microk8s kubectl rollout restart deployment/botcotizaciones -n botcotizaciones" 
