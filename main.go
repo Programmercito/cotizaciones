@@ -18,7 +18,7 @@ import (
 const (
 	jsonOutputPath = "/opt/codes/cotizaciones_ng/docs/data.json"
 	ngRepoPath     = "/opt/codes/cotizaciones_ng"
-	totalSteps     = 7
+	totalSteps     = 8
 )
 
 func main() {
@@ -106,6 +106,18 @@ func main() {
 		exitWithError("Error en git push: %v", err)
 	}
 	ui.Success("Cambios subidos correctamente")
+
+	// 8. Cleanup old cotizaciones (older than 30 days)
+	ui.StepStart(8, totalSteps, "🧹", "Limpiando registros antiguos (> 30 días)...")
+	deleted, err := database.DeleteOlderThan(30 * 24 * time.Hour)
+	if err != nil {
+		exitWithError("Error limpiando registros: %v", err)
+	}
+	if deleted > 0 {
+		ui.Success(fmt.Sprintf("Eliminados %d registros antiguos", deleted))
+	} else {
+		ui.Success("No hay registros antiguos para eliminar")
+	}
 
 	ui.Done()
 }

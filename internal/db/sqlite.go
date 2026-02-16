@@ -149,3 +149,13 @@ func (d *DB) UpdateConfig(currentDate, messageID string) error {
 	}
 	return nil
 }
+
+// DeleteOlderThan deletes cotizaciones older than the given duration and returns the count deleted.
+func (d *DB) DeleteOlderThan(d1 time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-d1).Format(timeFmt)
+	result, err := d.conn.Exec("DELETE FROM cotizaciones WHERE datetime < ?", cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("error deleting old cotizaciones: %w", err)
+	}
+	return result.RowsAffected()
+}
