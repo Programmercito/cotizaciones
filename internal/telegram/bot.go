@@ -42,7 +42,8 @@ func FormatMessage(bid float64) string {
 			"│  Exchange:  Binance P2P │\n"+
 			"└─────────────────────────┘"+
 			"</pre>\n\n"+
-			"🕐 <i>Actualizado: %s</i>",
+			"🕐 <i>Actualizado: %s</i>\n\n"+
+			"📊 <a href=\"https://cotizaciones.devcito.org/\">Ver historial reciente</a>",
 		bid, bid, now,
 	)
 }
