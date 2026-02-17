@@ -60,29 +60,31 @@ func main() {
 	ui.Success("Cotización guardada → moneda=USDT exchange=binancep2p")
 	ui.Info(fmt.Sprintf("bid=%.4f  time=%s", data.Bid, time.Now().Format("2006-01-02 15:04:05")))
 
-	// 4. Send/Edit Telegram message
+	// 4. Send/Edit Telegram message (non-fatal: skip on error)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
 	cfg, err := database.GetConfig()
 	if err != nil {
-		exitWithError("Error leyendo config: %v", err)
-	}
+		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
+	} else {
+		bot, err := telegram.New(token, cfg.ChatID)
+		if err != nil {
+			ui.Warn(fmt.Sprintf("Error creando bot de Telegram, saltando: %v", err))
+		} else {
+			ui.Success("Bot de Telegram conectado")
 
-	bot, err := telegram.New(token, cfg.ChatID)
-	if err != nil {
-		exitWithError("Error creando bot de Telegram: %v", err)
-	}
-	ui.Success("Bot de Telegram conectado")
+			today := time.Now().Format("2006-01-02")
+			message := telegram.FormatMessage(data.Bid)
 
-	today := time.Now().Format("2006-01-02")
-	message := telegram.FormatMessage(data.Bid)
-
-	msgID, err := sendOrEditMessage(bot, cfg, today, message)
-	if err != nil {
-		exitWithError("Error en notificación de Telegram: %v", err)
-	}
-	if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
-		exitWithError("Error actualizando config: %v", err)
+			msgID, err := sendOrEditMessage(bot, cfg, today, message)
+			if err != nil {
+				ui.Warn(fmt.Sprintf("Error en notificación de Telegram, saltando: %v", err))
+			} else {
+				if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+					ui.Warn(fmt.Sprintf("Error actualizando config de Telegram: %v", err))
+				}
+			}
+		}
 	}
 
 	// 5. Git pull forzado en el repo del frontend
