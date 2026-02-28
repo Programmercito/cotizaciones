@@ -159,3 +159,26 @@ func (d *DB) DeleteOlderThan(d1 time.Duration) (int64, error) {
 	}
 	return result.RowsAffected()
 }
+
+// WeeklyAverage returns the average cotizacion from the 7 calendar days
+// immediately before today (i.e. excluding today's records).
+// Returns (0, nil) when there are no records in that window.
+func (d *DB) WeeklyAverage() (float64, error) {
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekStart := todayStart.AddDate(0, 0, -7)
+
+	var avg sql.NullFloat64
+	err := d.conn.QueryRow(
+		"SELECT AVG(cotizacion) FROM cotizaciones WHERE datetime >= ? AND datetime < ?",
+		weekStart.Format(timeFmt),
+		todayStart.Format(timeFmt),
+	).Scan(&avg)
+	if err != nil {
+		return 0, fmt.Errorf("error calculating weekly average: %w", err)
+	}
+	if !avg.Valid {
+		return 0, nil
+	}
+	return avg.Float64, nil
+}
