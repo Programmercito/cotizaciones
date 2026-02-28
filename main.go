@@ -60,38 +60,43 @@ func main() {
 	ui.Success("Cotización guardada → moneda=USDT exchange=binancep2p")
 	ui.Info(fmt.Sprintf("bid=%.4f  time=%s", data.Bid, time.Now().Format("2006-01-02 15:04:05")))
 
-	// 4. Telegram notification (non-fatal: skip on error)
-	// - Spike (precio > promedio 7 días anteriores + 0.50): SIEMPRE envía mensaje NUEVO
-	// - Diario normal: NO envía Telegram
-	ui.StepStart(4, totalSteps, "📨", "Evaluando notificación de Telegram...")
+	// 4. Telegram (non-fatal: errores no cortan el flujo)
+	//    Siempre hace algo en Telegram:
+	//    a) messageID null        → nuevo mensaje + notificación
+	//    b) día nuevo             → nuevo mensaje + notificación
+	//    c) spike (>prom7d+0.50)  → nuevo mensaje alerta + notificación
+	//    d) mismo día, sin spike  → editar mensaje existente (silencioso)
+	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
-	weeklyAvg, err := database.WeeklyAverage()
+	cfg, err := database.GetConfig()
 	if err != nil {
-		ui.Warn(fmt.Sprintf("Error calculando promedio semanal: %v", err))
-		weeklyAvg = 0
-	}
-
-	const spikeThreshold = 0.50
-	isSpike := weeklyAvg > 0 && (data.Bid-weeklyAvg) > spikeThreshold
-
-	if isSpike {
-		diff := data.Bid - weeklyAvg
-		ui.Info(fmt.Sprintf("🚨 SPIKE detectado: %.4f BOB (prom=%.4f, diff=+%.4f)", data.Bid, weeklyAvg, diff))
-
-		cfg, err := database.GetConfig()
+		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
+	} else {
+		bot, err := telegram.New(token, cfg.ChatID)
 		if err != nil {
-			ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
+			ui.Warn(fmt.Sprintf("Error creando bot de Telegram, saltando: %v", err))
 		} else {
-			bot, err := telegram.New(token, cfg.ChatID)
-			if err != nil {
-				ui.Warn(fmt.Sprintf("Error creando bot de Telegram, saltando: %v", err))
-			} else {
-				ui.Success("Bot de Telegram conectado")
-				today := time.Now().Format("2006-01-02")
-				message := telegram.FormatSpikeMessage(data.Bid, weeklyAvg, diff)
+			ui.Success("Bot de Telegram conectado")
+			today := time.Now().Format("2006-01-02")
 
-				// Spike: siempre mensaje nuevo
-				msgID, err := bot.SendMessage(message)
+			weeklyAvg, avgErr := database.WeeklyAverage()
+			if avgErr != nil {
+				ui.Warn(fmt.Sprintf("Error calculando promedio semanal: %v", avgErr))
+				weeklyAvg = 0
+			}
+
+			const spikeThreshold = 0.50
+			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
+			isNewDay := cfg.CurrentDate != today
+			isSpike := weeklyAvg > 0 && (data.Bid-weeklyAvg) > spikeThreshold
+
+			switch {
+			case isSpike:
+				// c) Spike: nuevo mensaje con alerta
+				diff := data.Bid - weeklyAvg
+				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (prom=%.4f, +%.4f)", data.Bid, weeklyAvg, diff))
+				msg := telegram.FormatSpikeMessage(data.Bid, weeklyAvg, diff)
+				msgID, err := bot.SendMessage(msg)
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando alerta de spike: %v", err))
 				} else {
@@ -100,14 +105,46 @@ func main() {
 						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
 					}
 				}
+
+			case isNewDay || !hasMessage:
+				// a/b) Sin mensaje previo o día nuevo: nuevo mensaje diario
+				if !hasMessage {
+					ui.Info("Sin mensaje previo — enviando mensaje nuevo...")
+				} else {
+					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
+				}
+				msg := telegram.FormatDailyMessage(data.Bid)
+				msgID, err := bot.SendMessage(msg)
+				if err != nil {
+					ui.Warn(fmt.Sprintf("Error enviando mensaje diario: %v", err))
+				} else {
+					ui.Success(fmt.Sprintf("Mensaje diario enviado → msgID=%d", msgID))
+					if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+					}
+				}
+
+			default:
+				// d) Mismo día, sin spike: editar mensaje existente (silencioso)
+				mid, _ := strconv.Atoi(cfg.MessageID.String)
+				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
+				msg := telegram.FormatDailyMessage(data.Bid)
+				if err := bot.EditMessage(mid, msg); err != nil {
+					// Si editar falla (mensaje borrado, etc.) enviar uno nuevo
+					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", err))
+					msgID, err := bot.SendMessage(msg)
+					if err != nil {
+						ui.Warn(fmt.Sprintf("Error enviando mensaje fallback: %v", err))
+					} else {
+						ui.Success(fmt.Sprintf("Mensaje fallback enviado → msgID=%d", msgID))
+						if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+							ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+						}
+					}
+				} else {
+					ui.Success("Mensaje actualizado correctamente")
+				}
 			}
-		}
-	} else {
-		if weeklyAvg > 0 {
-			ui.Info(fmt.Sprintf("Sin spike (%.4f BOB, prom=%.4f, diff=+%.4f) — sin notificación",
-				data.Bid, weeklyAvg, data.Bid-weeklyAvg))
-		} else {
-			ui.Info("Sin datos de semana anterior — sin notificación")
 		}
 	}
 
