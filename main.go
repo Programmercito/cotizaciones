@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -79,29 +80,35 @@ func main() {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
 
-			weeklyAvg, avgErr := database.WeeklyAverage()
-			if avgErr != nil {
-				ui.Warn(fmt.Sprintf("Error calculando promedio semanal: %v", avgErr))
-				weeklyAvg = 0
-			}
-
 			const spikeThreshold = 0.50
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 			isNewDay := cfg.CurrentDate != today
-			isSpike := weeklyAvg > 0 && (data.Bid-weeklyAvg) > spikeThreshold
+
+			currentUmbral := data.Bid
+			if cfg.Umbral.Valid {
+				currentUmbral = cfg.Umbral.Float64
+			}
+
+			diff := data.Bid - currentUmbral
+			isSpike := cfg.Umbral.Valid && math.Abs(diff) >= spikeThreshold
+			isUp := diff > 0
+
+			umbralToSave := currentUmbral
+			if isSpike || isNewDay || !cfg.Umbral.Valid {
+				umbralToSave = data.Bid
+			}
 
 			switch {
 			case isSpike:
 				// c) Spike: nuevo mensaje con alerta
-				diff := data.Bid - weeklyAvg
-				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (prom=%.4f, +%.4f)", data.Bid, weeklyAvg, diff))
-				msg := telegram.FormatSpikeMessage(data.Bid, weeklyAvg, diff)
-				msgID, err := bot.SendMessage(msg)
+				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
+				msg, btn := telegram.FormatSpikeMessage(data.Bid, currentUmbral, diff, isUp)
+				msgID, err := bot.SendMessage(msg, btn)
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando alerta de spike: %v", err))
 				} else {
 					ui.Success(fmt.Sprintf("Alerta de spike enviada → msgID=%d", msgID))
-					if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+					if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
 						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
 					}
 				}
@@ -113,13 +120,13 @@ func main() {
 				} else {
 					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
 				}
-				msg := telegram.FormatDailyMessage(data.Bid)
-				msgID, err := bot.SendMessage(msg)
+				msg, btn := telegram.FormatDailyMessage(data.Bid)
+				msgID, err := bot.SendMessage(msg, btn)
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando mensaje diario: %v", err))
 				} else {
 					ui.Success(fmt.Sprintf("Mensaje diario enviado → msgID=%d", msgID))
-					if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+					if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
 						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
 					}
 				}
@@ -128,21 +135,24 @@ func main() {
 				// d) Mismo día, sin spike: editar mensaje existente (silencioso)
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
-				msg := telegram.FormatDailyMessage(data.Bid)
-				if err := bot.EditMessage(mid, msg); err != nil {
+				msg, btn := telegram.FormatDailyMessage(data.Bid)
+				if err := bot.EditMessage(mid, msg, btn); err != nil {
 					// Si editar falla (mensaje borrado, etc.) enviar uno nuevo
 					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", err))
-					msgID, err := bot.SendMessage(msg)
+					msgID, err := bot.SendMessage(msg, btn)
 					if err != nil {
 						ui.Warn(fmt.Sprintf("Error enviando mensaje fallback: %v", err))
 					} else {
 						ui.Success(fmt.Sprintf("Mensaje fallback enviado → msgID=%d", msgID))
-						if err := database.UpdateConfig(today, strconv.Itoa(msgID)); err != nil {
+						if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
 							ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
 						}
 					}
 				} else {
 					ui.Success("Mensaje actualizado correctamente")
+					if err := database.UpdateConfig(today, strconv.Itoa(mid), umbralToSave); err != nil {
+						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+					}
 				}
 			}
 		}
