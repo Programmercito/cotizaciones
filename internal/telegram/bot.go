@@ -41,39 +41,36 @@ func FormatSpikeMessage(bid, umbral, diff float64, isUp bool) (string, tgbotapi.
 	pct := (math.Abs(diff) / umbral) * 100
 	now := time.Now().Format("02/01/2006 · 15:04:05")
 
-	var title, dir string
+	var title, dir, emoji, trend string
 	if isUp {
-		title = "<blockquote>📈 USDT·BOB — Alerta de Subida</blockquote>\n\n🚨 <b>¡El USDT subió!</b>"
-		dir = "▲ +"
+		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USDT·BOB</b></blockquote>"
+		emoji = "📈"
+		dir = "+"
+		trend = "Subida rápida"
 	} else {
-		title = "<blockquote>📉 USDT·BOB — Alerta de Bajada</blockquote>\n\n🚨 <b>¡El USDT bajó!</b>"
-		dir = "▼ -"
+		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USDT·BOB</b></blockquote>"
+		emoji = "📉"
+		dir = "-"
+		trend = "Caída rápida"
 	}
-
-	lines := []string{
-		row("Precio actual", fmt.Sprintf("%.4f BOB", bid)),
-		row("Precio ref.", fmt.Sprintf("%.4f BOB", umbral)),
-		divider(),
-		row("Diferencia", fmt.Sprintf("%s%.4f BOB", dir, math.Abs(diff))),
-		row("Variación", fmt.Sprintf("%s%.2f%%", dir, pct)),
-		"",
-		row("Exchange", "Binance P2P"),
-		row("Par", "USDT / BOB"),
-	}
-
-	table := "<pre>" + strings.Join(lines, "\n") + "</pre>"
 
 	text := strings.Join([]string{
 		title,
+		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
+		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		table,
+		fmt.Sprintf("💸 <b>Precio Actual:</b> <code>%.4f BOB</code>", bid),
+		fmt.Sprintf("🏷️ <b>Precio Refer.:</b> <code>%.4f BOB</code>", umbral),
+		"────────────────────────",
+		fmt.Sprintf("📊 <b>Diferencia:</b> <code>%s%.4f BOB</code>", dir, math.Abs(diff)),
+		fmt.Sprintf("🔥 <b>Variación:</b>  <code>%s%.2f%%</code>", dir, pct),
 		"",
-		fmt.Sprintf("🕐 <i>%s</i>", now),
+		fmt.Sprintf("🕒 <i>%s</i>", now),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("ℹ️ Info detallada", siteURL),
+			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
 		),
 	)
 
@@ -84,27 +81,18 @@ func FormatSpikeMessage(bid, umbral, diff float64, isUp bool) (string, tgbotapi.
 func FormatDailyMessage(bid float64) (string, tgbotapi.InlineKeyboardMarkup) {
 	now := time.Now().Format("02/01/2006 · 15:04:05")
 
-	lines := []string{
-		row("Precio", fmt.Sprintf("%.4f BOB", bid)),
-		row("Par", "USDT / BOB"),
-		row("Exchange", "Binance P2P"),
-	}
-
-	table := "<pre>" + strings.Join(lines, "\n") + "</pre>"
-
 	text := strings.Join([]string{
-		"<blockquote>💱 USDT·BOB — Cotización del Día</blockquote>",
+		"<blockquote><b>☀️ Resumen Diario | USDT·BOB</b></blockquote>",
+		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		fmt.Sprintf("<b>💵  1 USDT = %.4f BOB</b>", bid),
+		fmt.Sprintf("💵 <b>1 USDT =</b> <code>%.4f BOB</code>", bid),
 		"",
-		table,
-		"",
-		fmt.Sprintf("🕐 <i>Actualizado: %s</i>", now),
+		fmt.Sprintf("🕒 <i>Actualizado: %s</i>", now),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("ℹ️ Info detallada", siteURL),
+			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
 		),
 	)
 
@@ -141,22 +129,4 @@ func (b *Bot) EditMessage(messageID int, text string, replyMarkup tgbotapi.Inlin
 	}
 
 	return nil
-}
-
-// ── Layout helpers ────────────────────────────────────────────────────────────
-
-const colWidth = 14 // label column width (chars)
-
-// row formats a label/value pair into a fixed-width table row.
-func row(label, value string) string {
-	pad := colWidth - len([]rune(label))
-	if pad < 1 {
-		pad = 1
-	}
-	return fmt.Sprintf("%s%s%s", label, strings.Repeat(" ", pad), value)
-}
-
-// divider returns a thin separator line matching the table width.
-func divider() string {
-	return strings.Repeat("─", 28)
 }
