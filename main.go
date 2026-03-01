@@ -103,7 +103,7 @@ func main() {
 				// c) Spike: nuevo mensaje con alerta
 				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
 				msg, btn := telegram.FormatSpikeMessage(data.Bid, currentUmbral, diff, isUp)
-				msgID, err := bot.SendMessage(msg, btn)
+				msgID, err := bot.SendMessage(msg, false, btn)
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando alerta de spike: %v", err))
 				} else {
@@ -121,7 +121,7 @@ func main() {
 					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
 				}
 				msg, btn := telegram.FormatDailyMessage(data.Bid)
-				msgID, err := bot.SendMessage(msg, btn)
+				msgID, err := bot.SendMessage(msg, true, btn)
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando mensaje diario: %v", err))
 				} else {
@@ -139,7 +139,7 @@ func main() {
 				if err := bot.EditMessage(mid, msg, btn); err != nil {
 					// Si editar falla (mensaje borrado, etc.) enviar uno nuevo
 					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", err))
-					msgID, err := bot.SendMessage(msg, btn)
+					msgID, err := bot.SendMessage(msg, true, btn)
 					if err != nil {
 						ui.Warn(fmt.Sprintf("Error enviando mensaje fallback: %v", err))
 					} else {

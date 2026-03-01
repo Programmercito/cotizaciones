@@ -114,10 +114,11 @@ func FormatDailyMessage(bid float64) (string, tgbotapi.InlineKeyboardMarkup) {
 // ── Bot actions ───────────────────────────────────────────────────────────────
 
 // SendMessage sends a new HTML message and returns its Telegram message ID.
-func (b *Bot) SendMessage(text string, replyMarkup tgbotapi.InlineKeyboardMarkup) (int, error) {
+func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineKeyboardMarkup) (int, error) {
 	msg := tgbotapi.NewMessage(b.chatID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.DisableWebPagePreview = true
+	msg.DisableNotification = silent
 	msg.ReplyMarkup = replyMarkup
 
 	sent, err := b.api.Send(msg)
