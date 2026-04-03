@@ -69,6 +69,16 @@ func main() {
 	//    d) mismo día, sin spike  → editar mensaje existente (silencioso)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
+	imagePath, imageErr := telegram.GeneratePriceImage(data.Bid)
+	if imageErr != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar la imagen de cotización: %v", imageErr))
+	}
+	if imagePath != "" {
+		defer func() {
+			_ = os.Remove(imagePath)
+		}()
+	}
+
 	cfg, err := database.GetConfig()
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
@@ -103,7 +113,12 @@ func main() {
 				// c) Spike: nuevo mensaje con alerta
 				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
 				msg, btn := telegram.FormatSpikeMessage(data.Bid, currentUmbral, diff, isUp)
-				msgID, err := bot.SendMessage(msg, false, btn)
+				var msgID int
+				if imagePath != "" {
+					msgID, err = bot.SendPhoto(imagePath, msg, false, btn)
+				} else {
+					msgID, err = bot.SendMessage(msg, false, btn)
+				}
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando alerta de spike: %v", err))
 				} else {
@@ -121,7 +136,12 @@ func main() {
 					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
 				}
 				msg, btn := telegram.FormatDailyMessage(data.Bid)
-				msgID, err := bot.SendMessage(msg, true, btn)
+				var msgID int
+				if imagePath != "" {
+					msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
+				} else {
+					msgID, err = bot.SendMessage(msg, true, btn)
+				}
 				if err != nil {
 					ui.Warn(fmt.Sprintf("Error enviando mensaje diario: %v", err))
 				} else {
@@ -136,10 +156,22 @@ func main() {
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
 				msg, btn := telegram.FormatDailyMessage(data.Bid)
-				if err := bot.EditMessage(mid, msg, btn); err != nil {
+				var editErr error
+				if imagePath != "" {
+					editErr = bot.EditPhoto(mid, imagePath, msg, btn)
+				} else {
+					editErr = bot.EditMessage(mid, msg, btn)
+				}
+
+				if editErr != nil {
 					// Si editar falla (mensaje borrado, etc.) enviar uno nuevo
-					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", err))
-					msgID, err := bot.SendMessage(msg, true, btn)
+					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", editErr))
+					var msgID int
+					if imagePath != "" {
+						msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
+					} else {
+						msgID, err = bot.SendMessage(msg, true, btn)
+					}
 					if err != nil {
 						ui.Warn(fmt.Sprintf("Error enviando mensaje fallback: %v", err))
 					} else {

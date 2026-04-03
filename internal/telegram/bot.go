@@ -130,3 +130,37 @@ func (b *Bot) EditMessage(messageID int, text string, replyMarkup tgbotapi.Inlin
 
 	return nil
 }
+
+// SendPhoto sends a photo message with caption and returns its Telegram message ID.
+func (b *Bot) SendPhoto(imagePath, caption string, silent bool, replyMarkup tgbotapi.InlineKeyboardMarkup) (int, error) {
+	photo := tgbotapi.NewPhoto(b.chatID, tgbotapi.FilePath(imagePath))
+	photo.Caption = caption
+	photo.ParseMode = tgbotapi.ModeHTML
+	photo.DisableNotification = silent
+	photo.ReplyMarkup = replyMarkup
+
+	sent, err := b.api.Send(photo)
+	if err != nil {
+		return 0, fmt.Errorf("error sending photo: %w", err)
+	}
+
+	return sent.MessageID, nil
+}
+
+// EditPhoto replaces an existing photo message with a new image and caption.
+func (b *Bot) EditPhoto(messageID int, imagePath, caption string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {
+	media := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(imagePath))
+	media.Caption = caption
+	media.ParseMode = tgbotapi.ModeHTML
+
+	edit := tgbotapi.EditMessageMediaConfig{
+		BaseEdit: tgbotapi.BaseEdit{ChatID: b.chatID, MessageID: messageID, ReplyMarkup: &replyMarkup},
+		Media:    media,
+	}
+
+	if _, err := b.api.Send(edit); err != nil {
+		return fmt.Errorf("error editing photo message: %w", err)
+	}
+
+	return nil
+}
