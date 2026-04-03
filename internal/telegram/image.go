@@ -18,8 +18,8 @@ import (
 // GeneratePriceImage creates a PNG with the current cotización en texto y devuelve la ruta del archivo.
 func GeneratePriceImage(bid float64) (string, error) {
 	const (
-		n = 1024
-		h = 512
+		n = 1400
+		h = 700
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, n, h))
@@ -31,11 +31,11 @@ func GeneratePriceImage(bid float64) (string, error) {
 		return "", fmt.Errorf("error parsing font: %w", err)
 	}
 
-	bigFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 96, DPI: 72, Hinting: font.HintingFull})
+	bigFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 120, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		return "", fmt.Errorf("error creating big face: %w", err)
 	}
-	smallFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 36, DPI: 72, Hinting: font.HintingFull})
+	smallFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 48, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		return "", fmt.Errorf("error creating small face: %w", err)
 	}
