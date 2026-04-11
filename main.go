@@ -42,7 +42,7 @@ func main() {
 		exitWithError("Error consultando API: %v", err)
 	}
 	ui.Success("Respuesta recibida correctamente")
-	ui.Price(data.Bid)
+	ui.Prices(data.Bid, data.TotalAsk)
 
 	// 2. Open database
 	ui.StepStart(2, totalSteps, "🗄️", "Conectando a base de datos SQLite...")
@@ -55,11 +55,11 @@ func main() {
 
 	// 3. Insert cotizacion
 	ui.StepStart(3, totalSteps, "💾", "Guardando cotización en base de datos...")
-	if err := database.InsertCotizacion(data.Bid); err != nil {
+	if err := database.InsertCotizacion(data.Bid, data.TotalAsk); err != nil {
 		exitWithError("Error guardando cotización: %v", err)
 	}
 	ui.Success("Cotización guardada → moneda=USDT exchange=binancep2p")
-	ui.Info(fmt.Sprintf("bid=%.4f  time=%s", data.Bid, time.Now().Format("2006-01-02 15:04:05")))
+	ui.Info(fmt.Sprintf("bid=%.2f  purchase=%.2f  time=%s", data.Bid, data.TotalAsk, time.Now().Format("2006-01-02 15:04:05")))
 
 	// 4. Telegram (non-fatal: errores no cortan el flujo)
 	//    Siempre hace algo en Telegram:

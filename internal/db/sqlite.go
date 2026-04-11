@@ -22,6 +22,7 @@ const (
 type Cotizacion struct {
 	Moneda     string  `json:"moneda"`
 	Cotizacion float64 `json:"cotizacion"`
+	Purchase   float64 `json:"purchase"`
 	Datetime   string  `json:"datetime"`
 	Exchange   string  `json:"exchange"`
 }
@@ -55,6 +56,9 @@ func New() (*DB, error) {
 		return nil, fmt.Errorf("error setting WAL mode: %w", err)
 	}
 
+	// Ensure 'purchase' column exists (migration)
+	_, _ = conn.Exec("ALTER TABLE cotizaciones ADD COLUMN purchase REAL DEFAULT 0")
+
 	return &DB{conn: conn}, nil
 }
 
@@ -66,12 +70,12 @@ func (d *DB) Close() error {
 // InsertCotizacion inserts a new cotizacion record.
 // Uses current local time to avoid duplicate key errors when the API
 // returns the same cached timestamp across consecutive calls.
-func (d *DB) InsertCotizacion(bid float64) error {
+func (d *DB) InsertCotizacion(bid, purchase float64) error {
 	datetime := time.Now().Format(timeFmt)
 
 	_, err := d.conn.Exec(
-		"INSERT INTO cotizaciones (moneda, cotizacion, datetime, exchange) VALUES (?, ?, ?, ?)",
-		moneda, bid, datetime, exchange,
+		"INSERT INTO cotizaciones (moneda, cotizacion, purchase, datetime, exchange) VALUES (?, ?, ?, ?, ?)",
+		moneda, bid, purchase, datetime, exchange,
 	)
 	if err != nil {
 		return fmt.Errorf("error inserting cotizacion: %w", err)
@@ -83,7 +87,7 @@ func (d *DB) InsertCotizacion(bid float64) error {
 // GetAllCotizaciones retrieves all records from the cotizaciones table
 func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
 	rows, err := d.conn.Query(
-		"SELECT moneda, cotizacion, datetime, exchange FROM cotizaciones ORDER BY datetime ASC",
+		"SELECT moneda, cotizacion, purchase, datetime, exchange FROM cotizaciones ORDER BY datetime ASC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error querying cotizaciones: %w", err)
@@ -93,7 +97,7 @@ func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
 	var cotizaciones []Cotizacion
 	for rows.Next() {
 		var c Cotizacion
-		if err := rows.Scan(&c.Moneda, &c.Cotizacion, &c.Datetime, &c.Exchange); err != nil {
+		if err := rows.Scan(&c.Moneda, &c.Cotizacion, &c.Purchase, &c.Datetime, &c.Exchange); err != nil {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		cotizaciones = append(cotizaciones, c)

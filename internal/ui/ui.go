@@ -64,10 +64,11 @@ func Fatal(msg string) {
 	fmt.Printf("\n  %s%s✗ FATAL: %s%s\n\n", Red, Bold, msg, Reset)
 }
 
-// Price prints the cotizacion
-func Price(bid float64) {
+// Prices prints the bid and purchase prices
+func Prices(bid, purchase float64) {
 	fmt.Println()
-	fmt.Printf("        %s%s💵  1 USDT = %.4f BOB%s\n", White, Bold, bid, Reset)
+	fmt.Printf("        %s%s💵  Venta:   %.4f BOB%s\n", White, Bold, bid, Reset)
+	fmt.Printf("        %s%s🛒  Compra:  %.4f BOB%s\n", White, Bold, purchase, Reset)
 	fmt.Println()
 }
 
