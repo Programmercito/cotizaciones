@@ -37,7 +37,7 @@ func New(token, chatID string) (*Bot, error) {
 
 // FormatSpikeMessage returns a visually rich HTML alert for a price spike.
 // umbral is the reference price, diff = bid - umbral.
-func FormatSpikeMessage(bid, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatSpikeMessage(bid, purchase, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	pct := (math.Abs(diff) / umbral) * 100
 	now := time.Now().Format("02/01/2006 · 15:04:05")
 
@@ -59,7 +59,8 @@ func FormatSpikeMessage(bid, umbral, diff float64, isUp bool) (string, tgbotapi.
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
 		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		fmt.Sprintf("💸 <b>Precio Actual:</b> <code>%.4f BOB</code>", bid),
+		fmt.Sprintf("💵 <b>VENTA (Bid):</b> <code>%.4f BOB</code>", bid),
+		fmt.Sprintf("🛒 <b>COMPRA (Ask):</b> <code>%.4f BOB</code>", purchase),
 		fmt.Sprintf("🏷️ <b>Precio Refer.:</b> <code>%.4f BOB</code>", umbral),
 		"────────────────────────",
 		fmt.Sprintf("📊 <b>Diferencia:</b> <code>%s%.4f BOB</code>", dir, math.Abs(diff)),
@@ -78,14 +79,15 @@ func FormatSpikeMessage(bid, umbral, diff float64, isUp bool) (string, tgbotapi.
 }
 
 // FormatDailyMessage returns a clean daily-summary HTML message.
-func FormatDailyMessage(bid float64) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatDailyMessage(bid, purchase float64) (string, tgbotapi.InlineKeyboardMarkup) {
 	now := time.Now().Format("02/01/2006 · 15:04:05")
 
 	text := strings.Join([]string{
 		"<blockquote><b>☀️ Resumen Diario | USDT·BOB</b></blockquote>",
 		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		fmt.Sprintf("💵 <b>1 USDT =</b> <code>%.4f BOB</code>", bid),
+		fmt.Sprintf("💵 <b>VENTA (Bid):</b>  <code>%.4f BOB</code>", bid),
+		fmt.Sprintf("🛒 <b>COMPRA (Ask):</b> <code>%.4f BOB</code>", purchase),
 		"",
 		fmt.Sprintf("🕒 <i>Actualizado: %s</i>", now),
 	}, "\n")

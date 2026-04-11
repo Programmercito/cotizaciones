@@ -69,7 +69,7 @@ func main() {
 	//    d) mismo día, sin spike  → editar mensaje existente (silencioso)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
-	imagePath, imageErr := telegram.GeneratePriceImage(data.Bid)
+	imagePath, imageErr := telegram.GeneratePriceImage(data.Bid, data.TotalAsk)
 	if imageErr != nil {
 		ui.Warn(fmt.Sprintf("No se pudo generar la imagen de cotización: %v", imageErr))
 	}
@@ -112,7 +112,7 @@ func main() {
 			case isSpike:
 				// c) Spike: nuevo mensaje con alerta
 				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
-				msg, btn := telegram.FormatSpikeMessage(data.Bid, currentUmbral, diff, isUp)
+				msg, btn := telegram.FormatSpikeMessage(data.Bid, data.TotalAsk, currentUmbral, diff, isUp)
 				var msgID int
 				if imagePath != "" {
 					msgID, err = bot.SendPhoto(imagePath, msg, false, btn)
@@ -135,7 +135,7 @@ func main() {
 				} else {
 					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
 				}
-				msg, btn := telegram.FormatDailyMessage(data.Bid)
+				msg, btn := telegram.FormatDailyMessage(data.Bid, data.TotalAsk)
 				var msgID int
 				if imagePath != "" {
 					msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
@@ -155,7 +155,7 @@ func main() {
 				// d) Mismo día, sin spike: editar mensaje existente (silencioso)
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
-				msg, btn := telegram.FormatDailyMessage(data.Bid)
+				msg, btn := telegram.FormatDailyMessage(data.Bid, data.TotalAsk)
 				var editErr error
 				if imagePath != "" {
 					editErr = bot.EditPhoto(mid, imagePath, msg, btn)
