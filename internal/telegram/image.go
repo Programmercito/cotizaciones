@@ -21,11 +21,11 @@ import (
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 1100
+		h = 1150
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	
+
 	bgColor := color.RGBA{R: 10, G: 15, B: 25, A: 255}
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: bgColor}, image.Point{}, draw.Src)
 
@@ -34,78 +34,97 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 		return "", err
 	}
 
-	titleFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 40, DPI: 72, Hinting: font.HintingFull})
-	labelFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 45, DPI: 72, Hinting: font.HintingFull})
-	priceFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 90, DPI: 72, Hinting: font.HintingFull})
-	smallFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 30, DPI: 72, Hinting: font.HintingFull})
+	titleFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 38, DPI: 72, Hinting: font.HintingFull})
+	labelFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 42, DPI: 72, Hinting: font.HintingFull})
+	priceFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 84, DPI: 72, Hinting: font.HintingFull})
+	smallFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 26, DPI: 72, Hinting: font.HintingFull})
+	tinyFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 22, DPI: 72, Hinting: font.HintingFull})
 
-	timestamp := time.Now().Format("02/01/2006 15:04:05")
-	
 	white := image.NewUniform(color.White)
 	green := image.NewUniform(color.RGBA{R: 0, G: 200, B: 120, A: 255})
 	red := image.NewUniform(color.RGBA{R: 250, G: 60, B: 80, A: 255})
 	blue := image.NewUniform(color.RGBA{R: 60, G: 150, B: 250, A: 255})
 	muted := image.NewUniform(color.RGBA{R: 130, G: 140, B: 160, A: 255})
+	gold := image.NewUniform(color.RGBA{R: 255, G: 200, B: 60, A: 255})
 
 	drawer := &font.Drawer{Dst: img, Src: white, Face: titleFace}
 
+	// formatDatetime: usa las constantes del paquete db, sin strings hardcodeados
+	formatDatetime := func(dt string) string {
+		t, err := time.Parse(db.TimeFmt, dt)
+		if err != nil {
+			return dt
+		}
+		return t.Format(db.DisplayTimeFmt)
+	}
+
 	drawQuoteRow := func(y int, title string, c db.Cotizacion, isPrecision bool) {
-		// Section Title
+		// Section title
 		drawer.Face = labelFace
 		drawer.Src = blue
 		drawer.Dot = fixed.P(60, y)
 		drawer.DrawString(title)
 
-		// Venta
+		// Actualizado label (hora de la DB para esta moneda)
+		drawer.Face = tinyFace
+		drawer.Src = muted
+		drawer.Dot = fixed.P(62, y+28)
+		drawer.DrawString("Actualizado: " + formatDatetime(c.Datetime))
+
+		// VENTA label + price
 		drawer.Face = smallFace
 		drawer.Src = red
-		drawer.Dot = fixed.P(80, y+60)
+		drawer.Dot = fixed.P(80, y+80)
 		drawer.DrawString("VENTA")
 
 		drawer.Face = priceFace
 		drawer.Src = white
 		vMsg := fmt.Sprintf("%.2f", c.Cotizacion)
-		if isPrecision { vMsg = fmt.Sprintf("%.4f", c.Cotizacion) }
-		drawer.Dot = fixed.P(80, y+160)
+		if isPrecision {
+			vMsg = fmt.Sprintf("%.4f", c.Cotizacion)
+		}
+		drawer.Dot = fixed.P(80, y+175)
 		drawer.DrawString(vMsg)
 
-		// Compra
+		// COMPRA label + price
 		drawer.Face = smallFace
 		drawer.Src = green
-		drawer.Dot = fixed.P(650, y+60)
+		drawer.Dot = fixed.P(650, y+80)
 		drawer.DrawString("COMPRA")
 
 		drawer.Face = priceFace
 		drawer.Src = white
 		cMsg := fmt.Sprintf("%.2f", c.Purchase)
-		if isPrecision { cMsg = fmt.Sprintf("%.4f", c.Purchase) }
-		drawer.Dot = fixed.P(650, y+160)
+		if isPrecision {
+			cMsg = fmt.Sprintf("%.4f", c.Purchase)
+		}
+		drawer.Dot = fixed.P(650, y+175)
 		drawer.DrawString(cMsg)
-		
+
 		// Separator line
-		draw.Draw(img, image.Rect(60, y+200, w-60, y+202), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
+		draw.Draw(img, image.Rect(60, y+205, w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
 	}
 
 	// Header
 	drawer.Face = smallFace
+	drawer.Src = gold
+	drawer.Dot = fixed.P(60, 55)
+	drawer.DrawString("COTIZACIONES · BOB")
+
+	// 1. USDT         (y=80)
+	drawQuoteRow(80, "USDT – BINANCE P2P", summary["USDT"], true)
+
+	// 2. Oficial      (y=380)
+	drawQuoteRow(380, "USD OFICIAL – BCB", summary["usd oficial"], false)
+
+	// 3. Referencial  (y=680)
+	drawQuoteRow(680, "USD REFERENCIAL – BCB", summary["usd referencial"], false)
+
+	// Footer global (hora de generación de la imagen)
+	drawer.Face = tinyFace
 	drawer.Src = muted
-	drawer.Dot = fixed.P(60, 60)
-	drawer.DrawString("RESUMEN DE COTIZACIONES")
-
-	// 1. USDT
-	drawQuoteRow(150, "USDT - BINANCE P2P", summary["USDT"], true)
-	
-	// 2. Oficial
-	drawQuoteRow(450, "USD OFICIAL - BANCO CENTRAL", summary["usd oficial"], false)
-
-	// 3. Referencial
-	drawQuoteRow(750, "USD REFERENCIAL - BANCO CENTRAL", summary["usd referencial"], false)
-
-	// Footer
-	drawer.Face = smallFace
-	drawer.Src = muted
-	drawer.Dot = fixed.P(60, h-40)
-	drawer.DrawString("Actualizado: " + timestamp)
+	drawer.Dot = fixed.P(60, h-25)
+	drawer.DrawString("Generado: " + time.Now().Format("02/01/2006 · 15:04:05"))
 
 	path, err := os.CreateTemp("", "cotizacion-*.png")
 	if err != nil {
@@ -117,4 +136,3 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	}
 	return path.Name(), nil
 }
-

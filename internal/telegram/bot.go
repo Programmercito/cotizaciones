@@ -13,6 +13,15 @@ import (
 
 const siteURL = "https://cotizaciones.devcito.org/"
 
+// fmtDT convierte un datetime de la DB al formato legible para Telegram.
+func fmtDT(dt string) string {
+	t, err := time.Parse(db.TimeFmt, dt)
+	if err != nil {
+		return dt
+	}
+	return t.Format(db.DisplayTimeFmt)
+}
+
 // Bot wraps the Telegram bot API bound to a specific chat.
 type Bot struct {
 	api    *tgbotapi.BotAPI
@@ -39,8 +48,9 @@ func New(token, chatID string) (*Bot, error) {
 // FormatSpikeMessage returns a visually rich HTML alert for a price spike.
 func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
+	oficial := summary["usd oficial"]
+	referencial := summary["usd referencial"]
 	pct := (math.Abs(diff) / umbral) * 100
-	now := time.Now().Format("02/01/2006 · 15:04:05")
 
 	var title, dir, emoji, trend string
 	if isUp {
@@ -63,19 +73,20 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 		"💰 <b>USDT (Binance):</b>",
 		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
 		"",
 		"🏢 <b>BCB - USD Oficial:</b>",
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", summary["usd oficial"].Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", summary["usd oficial"].Purchase),
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
 		"",
 		"📊 <b>BCB - USD Referencial:</b>",
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", summary["usd referencial"].Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", summary["usd referencial"].Purchase),
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
 		"────────────────────────",
 		fmt.Sprintf("📊 Variación USDT: <code>%s%.4f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
 		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.4f</code>", umbral),
-		"",
-		fmt.Sprintf("🕒 <i>%s</i>", now),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
@@ -89,7 +100,6 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 
 // FormatDailyMessage returns a clean daily-summary HTML message.
 func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
-	now := time.Now().Format("02/01/2006 · 15:04:05")
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
@@ -101,16 +111,17 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 		"💰 <b>USDT (Binance):</b>",
 		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
 		"",
 		"🏢 <b>BCB - USD Oficial:</b>",
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
 		"",
 		"📊 <b>BCB - USD Referencial:</b>",
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-		"",
-		fmt.Sprintf("🕒 <i>Actualizado: %s</i>", now),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(

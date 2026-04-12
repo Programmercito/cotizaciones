@@ -16,6 +16,11 @@ const (
 	moneda   = "USDT"
 	exchange = "binancep2p"
 	timeFmt  = "2006-01-02 15:04:05"
+
+	// TimeFmt es el formato de almacenamiento en DB (exportado para uso en otros paquetes)
+	TimeFmt = timeFmt
+	// DisplayTimeFmt es el formato legible para mostrar al usuario
+	DisplayTimeFmt = "02/01/2006 · 15:04"
 )
 
 // Cotizacion represents a row in the cotizaciones table
