@@ -21,7 +21,7 @@ import (
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 1150
+		h = 970
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -108,23 +108,23 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	// Header
 	drawer.Face = smallFace
 	drawer.Src = gold
-	drawer.Dot = fixed.P(60, 55)
+	drawer.Dot = fixed.P(60, 38)
 	drawer.DrawString("COTIZACIONES · BOB")
 
-	// 1. USDT         (y=80)
-	drawQuoteRow(80, "USDT – BINANCE P2P", summary["USDT"], true)
+	// 1. USDT         (y=100)
+	drawQuoteRow(100, "USDT – BINANCE P2P", summary["USDT"], true)
 
-	// 2. Oficial      (y=380)
-	drawQuoteRow(380, "USD OFICIAL – BCB", summary["usd oficial"], false)
+	// 2. Oficial      (y=400)
+	drawQuoteRow(400, "USD OFICIAL – BCB", summary["usd oficial"], false)
 
-	// 3. Referencial  (y=680)
-	drawQuoteRow(680, "USD REFERENCIAL – BCB", summary["usd referencial"], false)
+	// 3. Referencial  (y=700)
+	drawQuoteRow(700, "USD REFERENCIAL – BCB", summary["usd referencial"], false)
 
 	// Footer global (hora de generación de la imagen)
 	drawer.Face = tinyFace
 	drawer.Src = muted
-	drawer.Dot = fixed.P(60, h-25)
-	drawer.DrawString("Generado: " + time.Now().Format("02/01/2006 · 15:04:05"))
+	drawer.Dot = fixed.P(60, h-18)
+	drawer.DrawString("Generado: " + time.Now().Format(db.DisplayTimeFmt+":05"))
 
 	path, err := os.CreateTemp("", "cotizacion-*.png")
 	if err != nil {
