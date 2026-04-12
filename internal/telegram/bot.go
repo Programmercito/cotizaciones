@@ -140,6 +140,7 @@ func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineK
 	return sent.MessageID, nil
 }
 
+
 // EditMessage replaces the content of an existing message.
 func (b *Bot) EditMessage(messageID int, text string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {
 	edit := tgbotapi.NewEditMessageText(b.chatID, messageID, text)

@@ -14,6 +14,7 @@ import (
 	"cotizaciones/internal/ui"
 
 	"github.com/joho/godotenv"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 const (
@@ -89,12 +90,11 @@ func main() {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
 
-			const spikeThreshold = 0.50
+			const spikeThreshold = 0.05
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 
-			// umbral_referencial: se setea UNA SOLA VEZ si es null.
-			// Luego NUNCA cambia hasta que ocurra un spike.
-			// En spike: se resetea al nuevo precio como nueva base.
+			// umbral: referencia guardada la primera vez que se envía un mensaje.
+			// Solo cambia si hay spike (se resetea al precio actual).
 			umbralIsNull := !cfg.UmbralReferencial.Valid
 			currentUmbral := data.Bid
 			if !umbralIsNull {
@@ -103,86 +103,51 @@ func main() {
 
 			diff := data.Bid - currentUmbral
 			isSpike := !umbralIsNull && math.Abs(diff) >= spikeThreshold
-			isUp := diff > 0
 
-			// umbralToSave: solo cambia al inicio (1a vez) o tras un spike
-			// En ejecuciones normales se conserva el umbral previo sin tocarlo
-			umbralToSave := currentUmbral // por defecto: no cambia
+			// tryS: envía foto si existe; si falla cae a texto
+			tryS := func(text string, silent bool, btn tgbotapi.InlineKeyboardMarkup) (int, error) {
+				if imagePath != "" {
+					id, e := bot.SendPhoto(imagePath, text, silent, btn)
+					if e == nil {
+						return id, nil
+					}
+					ui.Warn(fmt.Sprintf("Foto falló (%v), enviando texto...", e))
+				}
+				return bot.SendMessage(text, silent, btn)
+			}
 
 			switch {
-			case isSpike:
-				// c) Spike: Actualizar mensaje con alerta y congelar. Resetear umbral al precio actual.
-				umbralToSave = data.Bid // ← solo aquí se actualiza el umbral
-				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
-				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbral, diff, isUp)
-				
-				if hasMessage {
-					mid, _ := strconv.Atoi(cfg.MessageID.String)
-					ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d) con alerta spike...", mid))
-					var editErr error
-					if imagePath != "" {
-						editErr = bot.EditPhoto(mid, imagePath, msg, btn)
-					} else {
-						editErr = bot.EditMessage(mid, msg, btn)
-					}
-					
-					if editErr != nil {
-						ui.Warn(fmt.Sprintf("No se pudo editar spike (%v) — enviando nuevo...", editErr))
-						newID, sendErr := 0, error(nil)
-						if imagePath != "" {
-							newID, sendErr = bot.SendPhoto(imagePath, msg, false, btn)
-						} else {
-							newID, sendErr = bot.SendMessage(msg, false, btn)
-						}
-						if sendErr != nil {
-							ui.Warn(fmt.Sprintf("Error enviando spike: %v", sendErr))
-						} else {
-							ui.Success(fmt.Sprintf("Spike enviado (nuevo) → msgID=%d", newID))
-						}
-					} else {
-						ui.Success("Mensaje de spike actualizado correctamente")
-					}
-				} else {
-					// No había mensaje: enviar uno nuevo
-					newID, sendErr := 0, error(nil)
-					if imagePath != "" {
-						newID, sendErr = bot.SendPhoto(imagePath, msg, false, btn)
-					} else {
-						newID, sendErr = bot.SendMessage(msg, false, btn)
-					}
-					if sendErr != nil {
-						ui.Warn(fmt.Sprintf("Error enviando spike: %v", sendErr))
-					} else {
-						ui.Success(fmt.Sprintf("Spike enviado → msgID=%d", newID))
-					}
-				}
-
-				// IMPORTANTE: Después de un spike, "ya no modifica". Limpiamos messageID
-				if err := database.UpdateConfig(today, "", umbralToSave); err != nil {
-					ui.Warn(fmt.Sprintf("Error al congelar mensaje tras spike: %v", err))
-				}
 
 			case !hasMessage:
-				// a/b) Sin mensaje previo: nuevo mensaje diario
-				ui.Info("Sin mensaje previo — enviando mensaje nuevo...")
+				// REGLA 1: No hay messageID → enviar nuevo y guardarlo sí o sí
+				ui.Info("Sin messageID — enviando mensaje nuevo...")
 				msg, btn := telegram.FormatDailyMessage(summary)
-				var msgID int
-				if imagePath != "" {
-					msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
+				newID, e := tryS(msg, true, btn)
+				if e != nil {
+					ui.Warn(fmt.Sprintf("Error enviando mensaje: %v", e))
 				} else {
-					msgID, err = bot.SendMessage(msg, true, btn)
+					ui.Success(fmt.Sprintf("Mensaje enviado → msgID=%d", newID))
+					if err := database.UpdateConfig(today, strconv.Itoa(newID), currentUmbral); err != nil {
+						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
+					}
 				}
-				if err != nil {
-					ui.Warn(fmt.Sprintf("Error enviando mensaje diario: %v", err))
+
+			case isSpike:
+				// REGLA 3: Spike (±0.05 BOB) → enviar mensaje NUEVO, actualizar messageID
+				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%+.4f)", data.Bid, currentUmbral, diff))
+				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbral, diff, diff > 0)
+				newID, e := tryS(msg, false, btn)
+				if e != nil {
+					ui.Warn(fmt.Sprintf("Error enviando spike: %v", e))
 				} else {
-					ui.Success(fmt.Sprintf("Mensaje diario enviado → msgID=%d", msgID))
-					if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
-						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+					ui.Success(fmt.Sprintf("Spike enviado → nuevo msgID=%d", newID))
+					if err := database.UpdateConfig(today, strconv.Itoa(newID), data.Bid); err != nil {
+						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
 					}
 				}
 
 			default:
-				// d) No es spike y ya hay mensaje: editar mensaje existente
+				// REGLA 2: Hay messageID, sin spike → editar mensaje existente
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
 				msg, btn := telegram.FormatDailyMessage(summary)
@@ -192,29 +157,22 @@ func main() {
 				} else {
 					editErr = bot.EditMessage(mid, msg, btn)
 				}
-
 				if editErr != nil {
-					// Si editar falla (mensaje borrado, etc.) enviar uno nuevo
+					// Mensaje borrado o inaccesible → enviar uno nuevo
 					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", editErr))
-					var msgID int
-					if imagePath != "" {
-						msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
+					newID, e := tryS(msg, true, btn)
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando fallback: %v", e))
 					} else {
-						msgID, err = bot.SendMessage(msg, true, btn)
-					}
-					if err != nil {
-						ui.Warn(fmt.Sprintf("Error enviando mensaje fallback: %v", err))
-					} else {
-						ui.Success(fmt.Sprintf("Mensaje fallback enviado → msgID=%d", msgID))
-						if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
-							ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+						ui.Success(fmt.Sprintf("Nuevo mensaje enviado → msgID=%d", newID))
+						if err := database.UpdateConfig(today, strconv.Itoa(newID), currentUmbral); err != nil {
+							ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
 						}
 					}
 				} else {
 					ui.Success("Mensaje actualizado correctamente")
-					// Mantenemos el mismo messageID (mid) y actualizamos umbral si toca
-					if err := database.UpdateConfig(today, strconv.Itoa(mid), umbralToSave); err != nil {
-						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+					if err := database.UpdateConfig(today, strconv.Itoa(mid), currentUmbral); err != nil {
+						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
 					}
 				}
 			}
