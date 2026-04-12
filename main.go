@@ -62,21 +62,20 @@ func main() {
 	ui.Info(fmt.Sprintf("bid=%.2f  purchase=%.2f  time=%s", data.Bid, data.TotalAsk, time.Now().Format("2006-01-02 15:04:05")))
 
 	// 4. Telegram (non-fatal: errores no cortan el flujo)
-	//    Siempre hace algo en Telegram:
-	//    a) messageID null        → nuevo mensaje + notificación
-	//    b) día nuevo             → nuevo mensaje + notificación
-	//    c) spike (>prom7d+0.50)  → nuevo mensaje alerta + notificación
-	//    d) mismo día, sin spike  → editar mensaje existente (silencioso)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
-	imagePath, imageErr := telegram.GeneratePriceImage(data.Bid, data.TotalAsk)
+	// Obtenemos el resumen de las 3 monedas desde la DB (lo que acabamos de guardar + lo que ya había)
+	summary, err := database.GetLatestSummary()
+	if err != nil {
+		ui.Warn(fmt.Sprintf("Error obteniendo resumen para Telegram: %v", err))
+	}
+
+	imagePath, imageErr := telegram.GeneratePriceImage(summary)
 	if imageErr != nil {
 		ui.Warn(fmt.Sprintf("No se pudo generar la imagen de cotización: %v", imageErr))
 	}
 	if imagePath != "" {
-		defer func() {
-			_ = os.Remove(imagePath)
-		}()
+		defer os.Remove(imagePath)
 	}
 
 	cfg, err := database.GetConfig()
@@ -112,7 +111,7 @@ func main() {
 			case isSpike:
 				// c) Spike: nuevo mensaje con alerta
 				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
-				msg, btn := telegram.FormatSpikeMessage(data.Bid, data.TotalAsk, currentUmbral, diff, isUp)
+				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbral, diff, isUp)
 				var msgID int
 				if imagePath != "" {
 					msgID, err = bot.SendPhoto(imagePath, msg, false, btn)
@@ -135,7 +134,7 @@ func main() {
 				} else {
 					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
 				}
-				msg, btn := telegram.FormatDailyMessage(data.Bid, data.TotalAsk)
+				msg, btn := telegram.FormatDailyMessage(summary)
 				var msgID int
 				if imagePath != "" {
 					msgID, err = bot.SendPhoto(imagePath, msg, true, btn)
@@ -155,7 +154,7 @@ func main() {
 				// d) Mismo día, sin spike: editar mensaje existente (silencioso)
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
-				msg, btn := telegram.FormatDailyMessage(data.Bid, data.TotalAsk)
+				msg, btn := telegram.FormatDailyMessage(summary)
 				var editErr error
 				if imagePath != "" {
 					editErr = bot.EditPhoto(mid, imagePath, msg, btn)
@@ -197,23 +196,23 @@ func main() {
 	}
 	ui.Success(fmt.Sprintf("Repositorio actualizado → %s", ngRepoPath))
 
-	// 6. Export all cotizaciones to JSON
-	ui.StepStart(6, totalSteps, "📄", "Exportando cotizaciones a JSON...")
+	// 5. Export all cotizaciones to JSON
+	ui.StepStart(5, totalSteps-1, "📄", "Exportando cotizaciones a JSON...")
 	if err := database.ExportCotizacionesToJSON(jsonOutputPath); err != nil {
 		exitWithError("Error exportando JSON: %v", err)
 	}
 	ui.Success(fmt.Sprintf("Archivo generado → %s", jsonOutputPath))
 
-	// 7. Git commit and push
-	ui.StepStart(7, totalSteps, "🚀", "Subiendo cambios al repositorio (git push)...")
+	// 6. Git commit and push
+	ui.StepStart(6, totalSteps-1, "🚀", "Subiendo cambios al repositorio (git push)...")
 	commitMsg := "data upload"
 	if err := git.CommitAndPush(ngRepoPath, commitMsg); err != nil {
 		exitWithError("Error en git push: %v", err)
 	}
 	ui.Success("Cambios subidos correctamente")
 
-	// 8. Cleanup old cotizaciones (older than 30 days)
-	ui.StepStart(8, totalSteps, "🧹", "Limpiando registros antiguos (> 30 días)...")
+	// 7. Cleanup old cotizaciones (older than 30 days)
+	ui.StepStart(7, totalSteps-1, "🧹", "Limpiando registros antiguos (> 30 días)...")
 	deleted, err := database.DeleteOlderThan(30 * 24 * time.Hour)
 	if err != nil {
 		exitWithError("Error limpiando registros: %v", err)

@@ -9,130 +9,112 @@ import (
 	"os"
 	"time"
 
+	"cotizaciones/internal/db"
+
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
-// GeneratePriceImage creates a PNG with the current buy and sell quotes and returns the file path.
-func GeneratePriceImage(bid, purchase float64) (string, error) {
+// GeneratePriceImage creates a PNG with USDT, Official and Referential quotes (Buy & Sell).
+func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
-		w = 1400
-		h = 800
+		w = 1200
+		h = 1100
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	
-	// Gradient-like background (dark navy)
-	bgColor := color.RGBA{R: 11, G: 18, B: 29, A: 255}
+	bgColor := color.RGBA{R: 10, G: 15, B: 25, A: 255}
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: bgColor}, image.Point{}, draw.Src)
 
-	// Load fonts
 	faceData, err := opentype.Parse(gobold.TTF)
 	if err != nil {
-		return "", fmt.Errorf("error parsing font: %w", err)
+		return "", err
 	}
 
-	labelFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{
-		Size:    60,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		return "", fmt.Errorf("error creating label face: %w", err)
-	}
-
-	priceFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{
-		Size:    140,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		return "", fmt.Errorf("error creating price face: %w", err)
-	}
-
-	smallFace, err := opentype.NewFace(faceData, &opentype.FaceOptions{
-		Size:    40,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		return "", fmt.Errorf("error creating small face: %w", err)
-	}
+	titleFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 40, DPI: 72, Hinting: font.HintingFull})
+	labelFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 45, DPI: 72, Hinting: font.HintingFull})
+	priceFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 90, DPI: 72, Hinting: font.HintingFull})
+	smallFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 30, DPI: 72, Hinting: font.HintingFull})
 
 	timestamp := time.Now().Format("02/01/2006 15:04:05")
 	
-	// Colors
 	white := image.NewUniform(color.White)
-	green := image.NewUniform(color.RGBA{R: 0, G: 192, B: 118, A: 255}) // Binance Green
-	red := image.NewUniform(color.RGBA{R: 246, G: 70, B: 93, A: 255})   // Binance Red
-	muted := image.NewUniform(color.RGBA{R: 132, G: 142, B: 156, A: 255})
+	green := image.NewUniform(color.RGBA{R: 0, G: 200, B: 120, A: 255})
+	red := image.NewUniform(color.RGBA{R: 250, G: 60, B: 80, A: 255})
+	blue := image.NewUniform(color.RGBA{R: 60, G: 150, B: 250, A: 255})
+	muted := image.NewUniform(color.RGBA{R: 130, G: 140, B: 160, A: 255})
 
-	// Helper to draw centered text or left-aligned
-	drawer := &font.Drawer{Dst: img, Src: white, Face: labelFace}
+	drawer := &font.Drawer{Dst: img, Src: white, Face: titleFace}
 
-	// 1. Title
+	drawQuoteRow := func(y int, title string, c db.Cotizacion, isPrecision bool) {
+		// Section Title
+		drawer.Face = labelFace
+		drawer.Src = blue
+		drawer.Dot = fixed.P(60, y)
+		drawer.DrawString(title)
+
+		// Venta
+		drawer.Face = smallFace
+		drawer.Src = red
+		drawer.Dot = fixed.P(80, y+60)
+		drawer.DrawString("VENTA")
+
+		drawer.Face = priceFace
+		drawer.Src = white
+		vMsg := fmt.Sprintf("%.2f", c.Cotizacion)
+		if isPrecision { vMsg = fmt.Sprintf("%.4f", c.Cotizacion) }
+		drawer.Dot = fixed.P(80, y+160)
+		drawer.DrawString(vMsg)
+
+		// Compra
+		drawer.Face = smallFace
+		drawer.Src = green
+		drawer.Dot = fixed.P(650, y+60)
+		drawer.DrawString("COMPRA")
+
+		drawer.Face = priceFace
+		drawer.Src = white
+		cMsg := fmt.Sprintf("%.2f", c.Purchase)
+		if isPrecision { cMsg = fmt.Sprintf("%.4f", c.Purchase) }
+		drawer.Dot = fixed.P(650, y+160)
+		drawer.DrawString(cMsg)
+		
+		// Separator line
+		draw.Draw(img, image.Rect(60, y+200, w-60, y+202), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
+	}
+
+	// Header
 	drawer.Face = smallFace
 	drawer.Src = muted
-	drawer.Dot = fixed.P(60, 80)
-	drawer.DrawString("BINANCE P2P · USDT / BOB")
+	drawer.Dot = fixed.P(60, 60)
+	drawer.DrawString("RESUMEN DE COTIZACIONES")
 
-	// 2. Venta (Sell) Section
-	drawer.Face = labelFace
-	drawer.Src = red
-	drawer.Dot = fixed.P(100, 220)
-	drawer.DrawString("VENTA")
-
-	drawer.Face = priceFace
-	drawer.Src = white
-	ventaMsg := fmt.Sprintf("%.4f", bid)
-	ventaWidth := drawer.MeasureString(ventaMsg).Round()
-	drawer.Dot = fixed.P(100, 380)
-	drawer.DrawString(ventaMsg)
+	// 1. USDT
+	drawQuoteRow(150, "USDT - BINANCE P2P", summary["USDT"], true)
 	
-	// Currency label
-	drawer.Face = labelFace
-	drawer.Src = muted
-	drawer.Dot = fixed.P(130 + ventaWidth, 380)
-	drawer.DrawString("BOB")
+	// 2. Oficial
+	drawQuoteRow(450, "USD OFICIAL - BANCO CENTRAL", summary["usd oficial"], false)
 
-	// 3. Compra (Buy) Section
-	drawer.Face = labelFace
-	drawer.Src = green
-	drawer.Dot = fixed.P(100, 500)
-	drawer.DrawString("COMPRA")
+	// 3. Referencial
+	drawQuoteRow(750, "USD REFERENCIAL - BANCO CENTRAL", summary["usd referencial"], false)
 
-	drawer.Face = priceFace
-	drawer.Src = white
-	compraMsg := fmt.Sprintf("%.4f", purchase)
-	compraWidth := drawer.MeasureString(compraMsg).Round()
-	drawer.Dot = fixed.P(100, 660)
-	drawer.DrawString(compraMsg)
-
-	// Currency label
-	drawer.Face = labelFace
-	drawer.Src = muted
-	drawer.Dot = fixed.P(130 + compraWidth, 660)
-	drawer.DrawString("BOB")
-
-	// 4. Footer
+	// Footer
 	drawer.Face = smallFace
 	drawer.Src = muted
 	drawer.Dot = fixed.P(60, h-40)
 	drawer.DrawString("Actualizado: " + timestamp)
 
-	// Save to temp file
 	path, err := os.CreateTemp("", "cotizacion-*.png")
 	if err != nil {
-		return "", fmt.Errorf("error creando archivo temporal: %w", err)
+		return "", err
 	}
 	defer path.Close()
-
 	if err := png.Encode(path, img); err != nil {
-		return "", fmt.Errorf("error codificando PNG: %w", err)
+		return "", err
 	}
-
 	return path.Name(), nil
 }
 

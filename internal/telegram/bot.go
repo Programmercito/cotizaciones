@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"cotizaciones/internal/db"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -36,19 +37,19 @@ func New(token, chatID string) (*Bot, error) {
 // ── Message formatters ────────────────────────────────────────────────────────
 
 // FormatSpikeMessage returns a visually rich HTML alert for a price spike.
-// umbral is the reference price, diff = bid - umbral.
-func FormatSpikeMessage(bid, purchase, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+	usdt := summary["USDT"]
 	pct := (math.Abs(diff) / umbral) * 100
 	now := time.Now().Format("02/01/2006 · 15:04:05")
 
 	var title, dir, emoji, trend string
 	if isUp {
-		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USDT·BOB</b></blockquote>"
+		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USDT</b></blockquote>"
 		emoji = "📈"
 		dir = "+"
 		trend = "Subida rápida"
 	} else {
-		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USDT·BOB</b></blockquote>"
+		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USDT</b></blockquote>"
 		emoji = "📉"
 		dir = "-"
 		trend = "Caída rápida"
@@ -59,12 +60,20 @@ func FormatSpikeMessage(bid, purchase, umbral, diff float64, isUp bool) (string,
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
 		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		fmt.Sprintf("💵 <b>VENTA (Bid):</b> <code>%.4f BOB</code>", bid),
-		fmt.Sprintf("🛒 <b>COMPRA (Ask):</b> <code>%.4f BOB</code>", purchase),
-		fmt.Sprintf("🏷️ <b>Precio Refer.:</b> <code>%.4f BOB</code>", umbral),
+		"💰 <b>USDT (Binance):</b>",
+		fmt.Sprintf("💵 <b>Venta:</b> <code>%.4f BOB</code>", usdt.Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.4f BOB</code>", usdt.Purchase),
+		"",
+		"🏢 <b>BCB - USD Oficial:</b>",
+		fmt.Sprintf("💵 <b>Venta:</b> <code>%.2f BOB</code>", summary["usd oficial"].Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.2f BOB</code>", summary["usd oficial"].Purchase),
+		"",
+		"📊 <b>BCB - USD Referencial:</b>",
+		fmt.Sprintf("💵 <b>Venta:</b> <code>%.2f BOB</code>", summary["usd referencial"].Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.2f BOB</code>", summary["usd referencial"].Purchase),
 		"────────────────────────",
-		fmt.Sprintf("📊 <b>Diferencia:</b> <code>%s%.4f BOB</code>", dir, math.Abs(diff)),
-		fmt.Sprintf("🔥 <b>Variación:</b>  <code>%s%.2f%%</code>", dir, pct),
+		fmt.Sprintf("📊 <b>Variación USDT:</b> <code>%s%.4f BOB</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
+		fmt.Sprintf("🏷️ <b>Ref. Anterior:</b> <code>%.4f BOB</code>", umbral),
 		"",
 		fmt.Sprintf("🕒 <i>%s</i>", now),
 	}, "\n")
@@ -79,15 +88,27 @@ func FormatSpikeMessage(bid, purchase, umbral, diff float64, isUp bool) (string,
 }
 
 // FormatDailyMessage returns a clean daily-summary HTML message.
-func FormatDailyMessage(bid, purchase float64) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
 	now := time.Now().Format("02/01/2006 · 15:04:05")
+	usdt := summary["USDT"]
+	oficial := summary["usd oficial"]
+	referencial := summary["usd referencial"]
 
 	text := strings.Join([]string{
-		"<blockquote><b>☀️ Resumen Diario | USDT·BOB</b></blockquote>",
-		"🏛️ <b>Mercado:</b> Binance P2P",
+		"<blockquote><b>☀️ Resumen de Cotizaciones</b></blockquote>",
+		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
 		"",
-		fmt.Sprintf("💵 <b>VENTA (Bid):</b>  <code>%.4f BOB</code>", bid),
-		fmt.Sprintf("🛒 <b>COMPRA (Ask):</b> <code>%.4f BOB</code>", purchase),
+		"💰 <b>USDT (Binance):</b>",
+		fmt.Sprintf("💵 <b>Venta:</b>  <code>%.4f BOB</code>", usdt.Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.4f BOB</code>", usdt.Purchase),
+		"",
+		"🏢 <b>BCB - USD Oficial:</b>",
+		fmt.Sprintf("💵 <b>Venta:</b>  <code>%.2f BOB</code>", oficial.Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.2f BOB</code>", oficial.Purchase),
+		"",
+		"📊 <b>BCB - USD Referencial:</b>",
+		fmt.Sprintf("💵 <b>Venta:</b>  <code>%.2f BOB</code>", referencial.Cotizacion),
+		fmt.Sprintf("🛒 <b>Compra:</b> <code>%.2f BOB</code>", referencial.Purchase),
 		"",
 		fmt.Sprintf("🕒 <i>Actualizado: %s</i>", now),
 	}, "\n")
