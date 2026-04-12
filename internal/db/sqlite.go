@@ -29,10 +29,10 @@ type Cotizacion struct {
 
 // Config represents a row in the config table
 type Config struct {
-	CurrentDate string
-	ChatID      string
-	MessageID   sql.NullString
-	Umbral      sql.NullFloat64
+	CurrentDate       string
+	ChatID            string
+	MessageID         sql.NullString
+	UmbralReferencial sql.NullFloat64
 }
 
 // DB wraps the sql.DB connection
@@ -58,6 +58,8 @@ func New() (*DB, error) {
 
 	// Ensure 'purchase' column exists (migration)
 	_, _ = conn.Exec("ALTER TABLE cotizaciones ADD COLUMN purchase REAL DEFAULT 0")
+	// Ensure 'umbral_referencial' column exists (migration)
+	_, _ = conn.Exec("ALTER TABLE config ADD COLUMN umbral_referencial REAL")
 
 	return &DB{conn: conn}, nil
 }
@@ -135,19 +137,23 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 // GetConfig retrieves the single config record
 func (d *DB) GetConfig() (*Config, error) {
 	var cfg Config
-	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, umbral FROM config LIMIT 1").
-		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.Umbral)
+	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, umbral_referencial FROM config LIMIT 1").
+		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.UmbralReferencial)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config: %w", err)
 	}
 	return &cfg, nil
 }
 
-// UpdateConfig updates the currentdate, messageid and umbral in the config table
+// UpdateConfig updates the currentdate, messageid and umbral_referencial in the config table
 func (d *DB) UpdateConfig(currentDate, messageID string, umbral float64) error {
+	var mID any = messageID
+	if messageID == "" {
+		mID = nil
+	}
 	_, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageid = ?, umbral = ?",
-		currentDate, messageID, umbral,
+		"UPDATE config SET currentdate = ?, messageid = ?, umbral_referencial = ?",
+		currentDate, mID, umbral,
 	)
 	if err != nil {
 		return fmt.Errorf("error updating config: %w", err)

@@ -91,49 +91,80 @@ func main() {
 
 			const spikeThreshold = 0.50
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
-			isNewDay := cfg.CurrentDate != today
 
+			// umbral_referencial: se setea UNA SOLA VEZ si es null.
+			// Luego NUNCA cambia hasta que ocurra un spike.
+			// En spike: se resetea al nuevo precio como nueva base.
+			umbralIsNull := !cfg.UmbralReferencial.Valid
 			currentUmbral := data.Bid
-			if cfg.Umbral.Valid {
-				currentUmbral = cfg.Umbral.Float64
+			if !umbralIsNull {
+				currentUmbral = cfg.UmbralReferencial.Float64
 			}
 
 			diff := data.Bid - currentUmbral
-			isSpike := cfg.Umbral.Valid && math.Abs(diff) >= spikeThreshold
+			isSpike := !umbralIsNull && math.Abs(diff) >= spikeThreshold
 			isUp := diff > 0
 
-			umbralToSave := currentUmbral
-			if isSpike || isNewDay || !cfg.Umbral.Valid {
-				umbralToSave = data.Bid
-			}
+			// umbralToSave: solo cambia al inicio (1a vez) o tras un spike
+			// En ejecuciones normales se conserva el umbral previo sin tocarlo
+			umbralToSave := currentUmbral // por defecto: no cambia
 
 			switch {
 			case isSpike:
-				// c) Spike: nuevo mensaje con alerta
+				// c) Spike: Actualizar mensaje con alerta y congelar. Resetear umbral al precio actual.
+				umbralToSave = data.Bid // ← solo aquí se actualiza el umbral
 				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%.4f)", data.Bid, currentUmbral, diff))
 				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbral, diff, isUp)
-				var msgID int
-				if imagePath != "" {
-					msgID, err = bot.SendPhoto(imagePath, msg, false, btn)
+				
+				if hasMessage {
+					mid, _ := strconv.Atoi(cfg.MessageID.String)
+					ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d) con alerta spike...", mid))
+					var editErr error
+					if imagePath != "" {
+						editErr = bot.EditPhoto(mid, imagePath, msg, btn)
+					} else {
+						editErr = bot.EditMessage(mid, msg, btn)
+					}
+					
+					if editErr != nil {
+						ui.Warn(fmt.Sprintf("No se pudo editar spike (%v) — enviando nuevo...", editErr))
+						newID, sendErr := 0, error(nil)
+						if imagePath != "" {
+							newID, sendErr = bot.SendPhoto(imagePath, msg, false, btn)
+						} else {
+							newID, sendErr = bot.SendMessage(msg, false, btn)
+						}
+						if sendErr != nil {
+							ui.Warn(fmt.Sprintf("Error enviando spike: %v", sendErr))
+						} else {
+							ui.Success(fmt.Sprintf("Spike enviado (nuevo) → msgID=%d", newID))
+						}
+					} else {
+						ui.Success("Mensaje de spike actualizado correctamente")
+					}
 				} else {
-					msgID, err = bot.SendMessage(msg, false, btn)
-				}
-				if err != nil {
-					ui.Warn(fmt.Sprintf("Error enviando alerta de spike: %v", err))
-				} else {
-					ui.Success(fmt.Sprintf("Alerta de spike enviada → msgID=%d", msgID))
-					if err := database.UpdateConfig(today, strconv.Itoa(msgID), umbralToSave); err != nil {
-						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
+					// No había mensaje: enviar uno nuevo
+					newID, sendErr := 0, error(nil)
+					if imagePath != "" {
+						newID, sendErr = bot.SendPhoto(imagePath, msg, false, btn)
+					} else {
+						newID, sendErr = bot.SendMessage(msg, false, btn)
+					}
+					if sendErr != nil {
+						ui.Warn(fmt.Sprintf("Error enviando spike: %v", sendErr))
+					} else {
+						ui.Success(fmt.Sprintf("Spike enviado → msgID=%d", newID))
 					}
 				}
 
-			case isNewDay || !hasMessage:
-				// a/b) Sin mensaje previo o día nuevo: nuevo mensaje diario
-				if !hasMessage {
-					ui.Info("Sin mensaje previo — enviando mensaje nuevo...")
-				} else {
-					ui.Info(fmt.Sprintf("Día nuevo (%s) — enviando mensaje nuevo...", today))
+				// IMPORTANTE: Después de un spike, "ya no modifica". Limpiamos messageID
+				if err := database.UpdateConfig(today, "", umbralToSave); err != nil {
+					ui.Warn(fmt.Sprintf("Error al congelar mensaje tras spike: %v", err))
 				}
+
+			case !hasMessage:
+				// a/b) Sin mensaje previo: nuevo mensaje diario
+				ui.Info("Sin mensaje previo — enviando mensaje nuevo...")
 				msg, btn := telegram.FormatDailyMessage(summary)
 				var msgID int
 				if imagePath != "" {
@@ -151,7 +182,7 @@ func main() {
 				}
 
 			default:
-				// d) Mismo día, sin spike: editar mensaje existente (silencioso)
+				// d) No es spike y ya hay mensaje: editar mensaje existente
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
 				msg, btn := telegram.FormatDailyMessage(summary)
@@ -181,6 +212,7 @@ func main() {
 					}
 				} else {
 					ui.Success("Mensaje actualizado correctamente")
+					// Mantenemos el mismo messageID (mid) y actualizamos umbral si toca
 					if err := database.UpdateConfig(today, strconv.Itoa(mid), umbralToSave); err != nil {
 						ui.Warn(fmt.Sprintf("Error actualizando config: %v", err))
 					}
