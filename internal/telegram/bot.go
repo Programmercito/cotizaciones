@@ -1,12 +1,12 @@
 package telegram
 
 import (
+	"cotizaciones/internal/db"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"time"
-	"cotizaciones/internal/db"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -14,12 +14,26 @@ import (
 const siteURL = "https://cotizaciones.devcito.org/"
 
 // fmtDT convierte un datetime de la DB al formato legible para Telegram.
+// Si el valor contiene hora, muestra segundos; si es solo fecha, muestra solo la fecha.
 func fmtDT(dt string) string {
-	t, err := time.Parse(db.TimeFmt, dt)
-	if err != nil {
-		return dt
+	layouts := []string{
+		db.TimeFmt,
+		"2006-01-02 15:04",
+		"2006-01-02",
 	}
-	return t.Format(db.DisplayTimeFmt)
+
+	for _, layout := range layouts {
+		t, err := time.Parse(layout, dt)
+		if err != nil {
+			continue
+		}
+		if layout == db.TimeFmt || layout == "2006-01-02 15:04" {
+			return t.Format(db.DisplayTimeFmt)
+		}
+		return t.Format(db.DisplayDateFmt)
+	}
+
+	return dt
 }
 
 // Bot wraps the Telegram bot API bound to a specific chat.
@@ -51,6 +65,7 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
 	pct := (math.Abs(diff) / umbral) * 100
+	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
 	var title, dir, emoji, trend string
 	if isUp {
@@ -87,6 +102,7 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 		"────────────────────────",
 		fmt.Sprintf("📊 Variación USDT: <code>%s%.4f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
 		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.4f</code>", umbral),
+		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
@@ -103,6 +119,7 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
+	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
 	text := strings.Join([]string{
 		"<blockquote><b>☀️ Resumen de Cotizaciones</b></blockquote>",
@@ -122,6 +139,8 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		"",
+		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
 	}, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
@@ -150,7 +169,6 @@ func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineK
 
 	return sent.MessageID, nil
 }
-
 
 // EditMessage replaces the content of an existing message.
 func (b *Bot) EditMessage(messageID int, text string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {

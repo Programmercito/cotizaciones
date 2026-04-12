@@ -50,12 +50,24 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	drawer := &font.Drawer{Dst: img, Src: white, Face: titleFace}
 
 	// formatDatetime: usa las constantes del paquete db, sin strings hardcodeados
+	// Si el valor incluye hora, muestra segundos; si es solo fecha, muestra solo la fecha.
 	formatDatetime := func(dt string) string {
-		t, err := time.Parse(db.TimeFmt, dt)
-		if err != nil {
-			return dt
+		layouts := []string{
+			db.TimeFmt,
+			"2006-01-02 15:04",
+			"2006-01-02",
 		}
-		return t.Format(db.DisplayTimeFmt)
+		for _, layout := range layouts {
+			t, err := time.Parse(layout, dt)
+			if err != nil {
+				continue
+			}
+			if layout == db.TimeFmt || layout == "2006-01-02 15:04" {
+				return t.Format(db.DisplayTimeFmt)
+			}
+			return t.Format(db.DisplayDateFmt)
+		}
+		return dt
 	}
 
 	drawQuoteRow := func(y int, title string, c db.Cotizacion, isPrecision bool) {
@@ -124,7 +136,7 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	drawer.Face = tinyFace
 	drawer.Src = muted
 	drawer.Dot = fixed.P(60, h-18)
-	drawer.DrawString("Generado: " + time.Now().Format(db.DisplayTimeFmt+":05"))
+	drawer.DrawString("Generado: " + time.Now().Format(db.DisplayTimeFmt))
 
 	path, err := os.CreateTemp("", "cotizacion-*.png")
 	if err != nil {

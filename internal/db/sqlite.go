@@ -19,8 +19,10 @@ const (
 
 	// TimeFmt es el formato de almacenamiento en DB (exportado para uso en otros paquetes)
 	TimeFmt = timeFmt
-	// DisplayTimeFmt es el formato legible para mostrar al usuario
-	DisplayTimeFmt = "02/01/2006 · 15:04"
+	// DisplayTimeFmt es el formato legible para mostrar fecha y hora con segundos.
+	DisplayTimeFmt = "02/01/2006 · 15:04:05"
+	// DisplayDateFmt es el formato legible para mostrar solo la fecha.
+	DisplayDateFmt = "02/01/2006"
 )
 
 // Cotizacion represents a row in the cotizaciones table
