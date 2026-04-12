@@ -32,7 +32,8 @@ type Config struct {
 	CurrentDate       string
 	ChatID            string
 	MessageID         sql.NullString
-	UmbralReferencial sql.NullFloat64
+	Umbral            sql.NullFloat64 // referencia USDT
+	UmbralReferencial sql.NullFloat64 // referencia USD Referencial
 }
 
 // DB wraps the sql.DB connection
@@ -137,26 +138,30 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 // GetConfig retrieves the single config record
 func (d *DB) GetConfig() (*Config, error) {
 	var cfg Config
-	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, umbral_referencial FROM config LIMIT 1").
-		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.UmbralReferencial)
+	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, umbral, umbral_referencial FROM config LIMIT 1").
+		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.Umbral, &cfg.UmbralReferencial)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config: %w", err)
 	}
 	return &cfg, nil
 }
 
-// UpdateConfig updates the currentdate, messageid and umbral_referencial in the config table
-func (d *DB) UpdateConfig(currentDate, messageID string, umbral float64) error {
+// UpdateConfig updates currentdate, messageid, umbral (USDT) y umbral_referencial (USD Ref)
+func (d *DB) UpdateConfig(currentDate, messageID string, umbralUSDT, umbralRef float64) error {
 	var mID any = messageID
 	if messageID == "" {
 		mID = nil
 	}
-	_, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageid = ?, umbral_referencial = ?",
-		currentDate, mID, umbral,
+	res, err := d.conn.Exec(
+		"UPDATE config SET currentdate = ?, messageid = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		currentDate, mID, umbralUSDT, umbralRef,
 	)
 	if err != nil {
 		return fmt.Errorf("error updating config: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("config: ninguna fila actualizada (tabla vacía?)")
 	}
 	return nil
 }

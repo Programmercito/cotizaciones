@@ -65,7 +65,6 @@ func main() {
 	// 4. Telegram (non-fatal: errores no cortan el flujo)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
-	// Obtenemos el resumen de las 3 monedas desde la DB (lo que acabamos de guardar + lo que ya había)
 	summary, err := database.GetLatestSummary()
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Error obteniendo resumen para Telegram: %v", err))
@@ -90,19 +89,38 @@ func main() {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
 
-			const spikeThreshold = 0.05
+			const spikeThreshold = 0.50
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 
-			// umbral: referencia guardada la primera vez que se envía un mensaje.
-			// Solo cambia si hay spike (se resetea al precio actual).
-			umbralIsNull := !cfg.UmbralReferencial.Valid
-			currentUmbral := data.Bid
-			if !umbralIsNull {
-				currentUmbral = cfg.UmbralReferencial.Float64
+			usdRef := summary["usd referencial"]
+
+			// umbral USDT (cfg.Umbral): referencia para calcular spike de USDT
+			// Se inicializa con data.Bid la primera vez, luego solo cambia si hay spike.
+			usdtUmbralNull := !cfg.Umbral.Valid
+			currentUmbralUSDT := data.Bid
+			if !usdtUmbralNull {
+				currentUmbralUSDT = cfg.Umbral.Float64
 			}
 
-			diff := data.Bid - currentUmbral
-			isSpike := !umbralIsNull && math.Abs(diff) >= spikeThreshold
+			// umbral USD Referencial (cfg.UmbralReferencial): referencia para spike de USD Ref
+			refUmbralNull := !cfg.UmbralReferencial.Valid
+			currentUmbralRef := usdRef.Cotizacion
+			if !refUmbralNull {
+				currentUmbralRef = cfg.UmbralReferencial.Float64
+			}
+
+			diffUSDT := data.Bid - currentUmbralUSDT
+			diffRef := usdRef.Cotizacion - currentUmbralRef
+
+			spikeUSDT := !usdtUmbralNull && math.Abs(diffUSDT) >= spikeThreshold
+			spikeRef := !refUmbralNull && math.Abs(diffRef) >= spikeThreshold
+			isSpike := spikeUSDT || spikeRef
+
+			// diff principal para el mensaje de spike (el mayor)
+			diff := diffUSDT
+			if math.Abs(diffRef) > math.Abs(diffUSDT) {
+				diff = diffRef
+			}
 
 			// tryS: envía foto si existe; si falla cae a texto
 			tryS := func(text string, silent bool, btn tgbotapi.InlineKeyboardMarkup) (int, error) {
@@ -116,6 +134,13 @@ func main() {
 				return bot.SendMessage(text, silent, btn)
 			}
 
+			// saveConfig: guarda messageID y ambos umbrales con los precios actuales
+			saveConfig := func(msgID string) {
+				if err := database.UpdateConfig(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
+				}
+			}
+
 			switch {
 
 			case !hasMessage:
@@ -127,23 +152,20 @@ func main() {
 					ui.Warn(fmt.Sprintf("Error enviando mensaje: %v", e))
 				} else {
 					ui.Success(fmt.Sprintf("Mensaje enviado → msgID=%d", newID))
-					if err := database.UpdateConfig(today, strconv.Itoa(newID), currentUmbral); err != nil {
-						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
-					}
+					saveConfig(strconv.Itoa(newID))
 				}
 
 			case isSpike:
-				// REGLA 3: Spike (±0.05 BOB) → enviar mensaje NUEVO, actualizar messageID
-				ui.Info(fmt.Sprintf("🚨 SPIKE: %.4f BOB (ref=%.4f, dif=%+.4f)", data.Bid, currentUmbral, diff))
-				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbral, diff, diff > 0)
+				// REGLA 3: Spike (±0.50) → enviar mensaje NUEVO, actualizar messageID y umbrales
+				ui.Info(fmt.Sprintf("🚨 SPIKE: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
+					data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
+				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbralUSDT, diff, diff > 0)
 				newID, e := tryS(msg, false, btn)
 				if e != nil {
 					ui.Warn(fmt.Sprintf("Error enviando spike: %v", e))
 				} else {
 					ui.Success(fmt.Sprintf("Spike enviado → nuevo msgID=%d", newID))
-					if err := database.UpdateConfig(today, strconv.Itoa(newID), data.Bid); err != nil {
-						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
-					}
+					saveConfig(strconv.Itoa(newID))
 				}
 
 			default:
@@ -165,15 +187,11 @@ func main() {
 						ui.Warn(fmt.Sprintf("Error enviando fallback: %v", e))
 					} else {
 						ui.Success(fmt.Sprintf("Nuevo mensaje enviado → msgID=%d", newID))
-						if err := database.UpdateConfig(today, strconv.Itoa(newID), currentUmbral); err != nil {
-							ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
-						}
+						saveConfig(strconv.Itoa(newID))
 					}
 				} else {
 					ui.Success("Mensaje actualizado correctamente")
-					if err := database.UpdateConfig(today, strconv.Itoa(mid), currentUmbral); err != nil {
-						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
-					}
+					saveConfig(strconv.Itoa(mid))
 				}
 			}
 		}
