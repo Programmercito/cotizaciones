@@ -97,7 +97,7 @@ func (d *DB) InsertCotizacion(bid, purchase float64) error {
 // GetAllCotizaciones retrieves all records from the cotizaciones table
 func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
 	rows, err := d.conn.Query(
-		"SELECT moneda, cotizacion, purchase, datetime, exchange FROM cotizaciones ORDER BY datetime ASC",
+		"SELECT moneda, cotizacion, purchase, datetime, exchange, moneda_dest FROM cotizaciones ORDER BY datetime ASC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error querying cotizaciones: %w", err)
