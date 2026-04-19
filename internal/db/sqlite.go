@@ -108,7 +108,7 @@ func (d *DB) GetAllCotizaciones() ([]Cotizacion, error) {
 	var cotizaciones []Cotizacion
 	for rows.Next() {
 		var c Cotizacion
-		if err := rows.Scan(&c.Moneda, &c.Cotizacion, &c.Purchase, &c.Datetime, &c.Exchange); err != nil {
+		if err := rows.Scan(&c.Moneda, &c.Cotizacion, &c.Purchase, &c.Datetime, &c.Exchange, &c.MonedaDest); err != nil {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		cotizaciones = append(cotizaciones, c)
