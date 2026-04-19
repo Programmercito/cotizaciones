@@ -32,6 +32,7 @@ type Cotizacion struct {
 	Purchase   float64 `json:"purchase"`
 	Datetime   string  `json:"datetime"`
 	Exchange   string  `json:"exchange"`
+	MonedaDest string  `json:"moneda_dest,omitempty"` // para futuras conversiones
 }
 
 // Config represents a row in the config table
