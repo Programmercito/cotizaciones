@@ -36,6 +36,14 @@ func fmtDT(dt string) string {
 	return dt
 }
 
+// fmtDest returns a formatted moneda destino tag, or empty if blank.
+func fmtDest(dest string) string {
+	if dest == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (%s)", dest)
+}
+
 // Bot wraps the Telegram bot API bound to a specific chat.
 type Bot struct {
 	api    *tgbotapi.BotAPI
@@ -64,7 +72,7 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
-	euro := summary["euro"]
+	euro := summary["eur"]
 	oro := summary["oro"]
 	plata := summary["plata"]
 	ufv := summary["ufv"]
@@ -89,35 +97,35 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
 		"🏛️ <b>Mercado:</b> Binance P2P",
 		"",
-		"💰 <b>USDT (Binance):</b>",
+		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
 		"",
-		"🏢 <b>BCB - USD Oficial:</b>",
+		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
 		"",
-		"📊 <b>BCB - USD Referencial:</b>",
+		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
 		"",
-		"🇪🇺 <b>Euro:</b>",
+		"🇪🇺 <b>Euro:</b>" + fmtDest(euro.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
 		"",
-		"🥇 <b>Oro (Troy Oz):</b>",
+		"🥇 <b>Oro (Troy Oz):</b>" + fmtDest(oro.MonedaDest),
 		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
 		"",
-		"🥈 <b>Plata (Troy Oz):</b>",
+		"🥈 <b>Plata (Troy Oz):</b>" + fmtDest(plata.MonedaDest),
 		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
 		"",
-		"📐 <b>UFV:</b>",
+		"📐 <b>UFV:</b>" + fmtDest(ufv.MonedaDest),
 		fmt.Sprintf("💵 Valor:  <code>%.5f</code>", ufv.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
 		"────────────────────────",
@@ -140,7 +148,7 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
-	euro := summary["euro"]
+	euro := summary["eur"]
 	oro := summary["oro"]
 	plata := summary["plata"]
 	ufv := summary["ufv"]
@@ -150,35 +158,35 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 		"<blockquote><b>☀️ Resumen de Cotizaciones</b></blockquote>",
 		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
 		"",
-		"💰 <b>USDT (Binance):</b>",
+		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
 		"",
-		"🏢 <b>BCB - USD Oficial:</b>",
+		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
 		"",
-		"📊 <b>BCB - USD Referencial:</b>",
+		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
 		"",
-		"🇪🇺 <b>Euro:</b>",
+		"🇪🇺 <b>Euro:</b>" + fmtDest(euro.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
 		"",
-		"🥇 <b>Oro (Troy Oz):</b>",
+		"🥇 <b>Oro (Troy Oz):</b>" + fmtDest(oro.MonedaDest),
 		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
 		"",
-		"🥈 <b>Plata (Troy Oz):</b>",
+		"🥈 <b>Plata (Troy Oz):</b>" + fmtDest(plata.MonedaDest),
 		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
 		"",
-		"📐 <b>UFV:</b>",
+		"📐 <b>UFV:</b>" + fmtDest(ufv.MonedaDest),
 		fmt.Sprintf("💵 Valor:  <code>%.5f</code>", ufv.Cotizacion),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
 		"",

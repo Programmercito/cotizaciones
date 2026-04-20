@@ -187,14 +187,16 @@ func (d *DB) DeleteOlderThan(d1 time.Duration) (int64, error) {
 // GetLatestByMoneda returns the most recent cotizacion for a specific moneda
 func (d *DB) GetLatestByMoneda(name string) (Cotizacion, error) {
 	var c Cotizacion
+	var md sql.NullString
 	err := d.conn.QueryRow(
-		"SELECT moneda, cotizacion, purchase, datetime, exchange FROM cotizaciones WHERE moneda = ? ORDER BY datetime DESC LIMIT 1",
+		"SELECT moneda, cotizacion, purchase, datetime, exchange, moneda_dest FROM cotizaciones WHERE moneda = ? ORDER BY datetime DESC LIMIT 1",
 		name,
-	).Scan(&c.Moneda, &c.Cotizacion, &c.Purchase, &c.Datetime, &c.Exchange)
+	).Scan(&c.Moneda, &c.Cotizacion, &c.Purchase, &c.Datetime, &c.Exchange, &md)
 
 	if err != nil {
 		return Cotizacion{}, err
 	}
+	c.MonedaDest = md.String
 	return c, nil
 }
 
@@ -202,7 +204,7 @@ func (d *DB) GetLatestByMoneda(name string) (Cotizacion, error) {
 func (d *DB) GetLatestSummary() (map[string]Cotizacion, error) {
 	summary := make(map[string]Cotizacion)
 
-	monedas := []string{"USDT", "usd oficial", "usd referencial", "euro", "oro", "plata", "ufv"}
+	monedas := []string{"USDT", "usd oficial", "usd referencial", "eur", "oro", "plata", "ufv"}
 	for _, m := range monedas {
 		c, err := d.GetLatestByMoneda(m)
 		if err == nil {

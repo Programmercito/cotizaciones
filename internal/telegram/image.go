@@ -21,7 +21,7 @@ import (
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 2050
+		h = 2180
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -142,32 +142,40 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 		draw.Draw(img, image.Rect(60, y+205, w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
 	}
 
+	// destSuffix returns " (BOB)" etc. if moneda_dest is set
+	destSuffix := func(c db.Cotizacion) string {
+		if c.MonedaDest == "" {
+			return ""
+		}
+		return " (" + c.MonedaDest + ")"
+	}
+
 	// Header
 	drawer.Face = smallFace
 	drawer.Src = gold
 	drawer.Dot = fixed.P(60, 38)
-	drawer.DrawString("COTIZACIONES · BOB")
+	drawer.DrawString("COTIZACIONES")
 
 	// 1. USDT         (y=100)
-	drawQuoteRow(100, "USDT – BINANCE P2P", summary["USDT"], true)
+	drawQuoteRow(100, "USDT – BINANCE P2P"+destSuffix(summary["USDT"]), summary["USDT"], true)
 
-	// 2. Oficial      (y=400)
-	drawQuoteRow(400, "USD OFICIAL – BCB", summary["usd oficial"], false)
+	// 2. Oficial      (y=420)
+	drawQuoteRow(420, "USD OFICIAL – BCB"+destSuffix(summary["usd oficial"]), summary["usd oficial"], false)
 
-	// 3. Referencial  (y=700)
-	drawQuoteRow(700, "USD REFERENCIAL – BCB", summary["usd referencial"], false)
+	// 3. Referencial  (y=740)
+	drawQuoteRow(740, "USD REFERENCIAL – BCB"+destSuffix(summary["usd referencial"]), summary["usd referencial"], false)
 
-	// 4. Euro         (y=1000)
-	drawQuoteRow(1000, "EURO – BCB", summary["euro"], false)
+	// 4. Euro         (y=1060)
+	drawQuoteRow(1060, "EURO – BCB"+destSuffix(summary["eur"]), summary["eur"], false)
 
-	// 5. Oro          (y=1300)
-	drawSingleRow(1300, "ORO (TROY OZ) – BCB", "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
+	// 5. Oro          (y=1380)
+	drawSingleRow(1380, "ORO (TROY OZ) – BCB"+destSuffix(summary["oro"]), "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
 
-	// 6. Plata        (y=1540)
-	drawSingleRow(1540, "PLATA (TROY OZ) – BCB", "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
+	// 6. Plata        (y=1640)
+	drawSingleRow(1640, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
 
-	// 7. UFV          (y=1780)
-	drawSingleRow(1780, "UFV – BCB", "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
+	// 7. UFV          (y=1900)
+	drawSingleRow(1900, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
 
 	// Footer global (hora de generación de la imagen)
 	drawer.Face = tinyFace
