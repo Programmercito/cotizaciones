@@ -13,8 +13,8 @@ import (
 	"cotizaciones/internal/telegram"
 	"cotizaciones/internal/ui"
 
-	"github.com/joho/godotenv"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -89,7 +89,7 @@ func main() {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
 
-			const spikeThreshold = 0.50
+			const spikeThreshold = 0.30
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 
 			usdRef := summary["usd referencial"]

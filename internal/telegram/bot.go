@@ -64,6 +64,10 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
+	euro := summary["euro"]
+	oro := summary["oro"]
+	plata := summary["plata"]
+	ufv := summary["ufv"]
 	pct := (math.Abs(diff) / umbral) * 100
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
@@ -99,6 +103,23 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		"",
+		"🇪🇺 <b>Euro:</b>",
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
+		"",
+		"🥇 <b>Oro (Troy Oz):</b>",
+		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
+		"",
+		"🥈 <b>Plata (Troy Oz):</b>",
+		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
+		"",
+		"📐 <b>UFV:</b>",
+		fmt.Sprintf("💵 Valor:  <code>%.5f</code>", ufv.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
 		"────────────────────────",
 		fmt.Sprintf("📊 Variación USDT: <code>%s%.4f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
 		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.4f</code>", umbral),
@@ -119,6 +140,10 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
+	euro := summary["euro"]
+	oro := summary["oro"]
+	plata := summary["plata"]
+	ufv := summary["ufv"]
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
 	text := strings.Join([]string{
@@ -139,6 +164,23 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		"",
+		"🇪🇺 <b>Euro:</b>",
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
+		"",
+		"🥇 <b>Oro (Troy Oz):</b>",
+		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
+		"",
+		"🥈 <b>Plata (Troy Oz):</b>",
+		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
+		"",
+		"📐 <b>UFV:</b>",
+		fmt.Sprintf("💵 Valor:  <code>%.5f</code>", ufv.Cotizacion),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
 		"",
 		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
 	}, "\n")

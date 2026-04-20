@@ -17,11 +17,11 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// GeneratePriceImage creates a PNG with USDT, Official and Referential quotes (Buy & Sell).
+// GeneratePriceImage creates a PNG with USDT, Official, Referential, Euro, Oro, Plata and UFV quotes.
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 970
+		h = 2050
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -117,6 +117,31 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 		draw.Draw(img, image.Rect(60, y+205, w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
 	}
 
+	// drawSingleRow draws a row with a single value (no buy/sell pair)
+	drawSingleRow := func(y int, title, valueLabel string, value float64, fmtStr string, c db.Cotizacion) {
+		drawer.Face = labelFace
+		drawer.Src = blue
+		drawer.Dot = fixed.P(60, y)
+		drawer.DrawString(title)
+
+		drawer.Face = tinyFace
+		drawer.Src = muted
+		drawer.Dot = fixed.P(62, y+28)
+		drawer.DrawString("Actualizado: " + formatDatetime(c.Datetime))
+
+		drawer.Face = smallFace
+		drawer.Src = gold
+		drawer.Dot = fixed.P(80, y+80)
+		drawer.DrawString(valueLabel)
+
+		drawer.Face = priceFace
+		drawer.Src = white
+		drawer.Dot = fixed.P(80, y+175)
+		drawer.DrawString(fmt.Sprintf(fmtStr, value))
+
+		draw.Draw(img, image.Rect(60, y+205, w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
+	}
+
 	// Header
 	drawer.Face = smallFace
 	drawer.Src = gold
@@ -131,6 +156,18 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 
 	// 3. Referencial  (y=700)
 	drawQuoteRow(700, "USD REFERENCIAL – BCB", summary["usd referencial"], false)
+
+	// 4. Euro         (y=1000)
+	drawQuoteRow(1000, "EURO – BCB", summary["euro"], false)
+
+	// 5. Oro          (y=1300)
+	drawSingleRow(1300, "ORO (TROY OZ) – BCB", "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
+
+	// 6. Plata        (y=1540)
+	drawSingleRow(1540, "PLATA (TROY OZ) – BCB", "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
+
+	// 7. UFV          (y=1780)
+	drawSingleRow(1780, "UFV – BCB", "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
 
 	// Footer global (hora de generación de la imagen)
 	drawer.Face = tinyFace

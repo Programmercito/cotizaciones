@@ -202,7 +202,7 @@ func (d *DB) GetLatestByMoneda(name string) (Cotizacion, error) {
 func (d *DB) GetLatestSummary() (map[string]Cotizacion, error) {
 	summary := make(map[string]Cotizacion)
 
-	monedas := []string{"USDT", "usd oficial", "usd referencial"}
+	monedas := []string{"USDT", "usd oficial", "usd referencial", "euro", "oro", "plata", "ufv"}
 	for _, m := range monedas {
 		c, err := d.GetLatestByMoneda(m)
 		if err == nil {
