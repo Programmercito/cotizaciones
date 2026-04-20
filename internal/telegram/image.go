@@ -21,7 +21,7 @@ import (
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 2180
+		h = 2300
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -171,11 +171,11 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	// 5. Oro          (y=1380)
 	drawSingleRow(1380, "ORO (TROY OZ) – BCB"+destSuffix(summary["oro"]), "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
 
-	// 6. Plata        (y=1640)
-	drawSingleRow(1640, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
+	// 6. Plata        (y=1700)
+	drawSingleRow(1700, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
 
-	// 7. UFV          (y=1900)
-	drawSingleRow(1900, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
+	// 7. UFV          (y=2020)
+	drawSingleRow(2020, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
 
 	// Footer global (hora de generación de la imagen)
 	drawer.Face = tinyFace
