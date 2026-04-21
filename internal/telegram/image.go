@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,6 +12,7 @@ import (
 
 	"cotizaciones/internal/db"
 
+	qrcode "github.com/skip2/go-qrcode"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/opentype"
@@ -21,7 +23,7 @@ import (
 func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	const (
 		w = 1200
-		h = 2300
+		h = 1950
 	)
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -156,26 +158,61 @@ func GeneratePriceImage(summary map[string]db.Cotizacion) (string, error) {
 	drawer.Dot = fixed.P(60, 38)
 	drawer.DrawString("COTIZACIONES")
 
+	// Draw QR codes top-right
+	const qrSize = 230
+	const qrMargin = 12
+	drawQR := func(url string, xRight, yTop int) {
+		pngBytes, err2 := qrcode.Encode(url, qrcode.Medium, qrSize)
+		if err2 != nil {
+			return
+		}
+		qrImg, err2 := png.Decode(bytes.NewReader(pngBytes))
+		if err2 != nil {
+			return
+		}
+		dstRect := image.Rect(xRight, yTop, xRight+qrSize, yTop+qrSize)
+		draw.Draw(img, dstRect, qrImg, image.Point{}, draw.Src)
+	}
+	qrX := w - qrSize - qrMargin
+
+	// QR 1: Telegram
+	qr1TitleY := qrMargin + 22
+	qr1Top := qrMargin + 26
+	drawer.Face = tinyFace
+	drawer.Src = muted
+	drawer.Dot = fixed.P(qrX, qr1TitleY)
+	drawer.DrawString("Telegram")
+	drawQR("https://t.me/cotizacionbo", qrX, qr1Top)
+
+	// QR 2: Website
+	qr2TitleY := qr1Top + qrSize + 20 + 22
+	qr2Top := qr1Top + qrSize + 20 + 26
+	drawer.Face = tinyFace
+	drawer.Src = muted
+	drawer.Dot = fixed.P(qrX, qr2TitleY)
+	drawer.DrawString("Website")
+	drawQR("https://dolarbolivia.org", qrX, qr2Top)
+
 	// 1. USDT         (y=100)
 	drawQuoteRow(100, "USDT – BINANCE P2P"+destSuffix(summary["USDT"]), summary["USDT"], true)
 
-	// 2. Oficial      (y=420)
-	drawQuoteRow(420, "USD OFICIAL – BCB"+destSuffix(summary["usd oficial"]), summary["usd oficial"], false)
+	// 2. Oficial      (y=360)
+	drawQuoteRow(360, "USD OFICIAL – BCB"+destSuffix(summary["usd oficial"]), summary["usd oficial"], false)
 
-	// 3. Referencial  (y=740)
-	drawQuoteRow(740, "USD REFERENCIAL – BCB"+destSuffix(summary["usd referencial"]), summary["usd referencial"], false)
+	// 3. Referencial  (y=620)
+	drawQuoteRow(620, "USD REFERENCIAL – BCB"+destSuffix(summary["usd referencial"]), summary["usd referencial"], false)
 
-	// 4. Euro         (y=1060)
-	drawQuoteRow(1060, "EURO – BCB"+destSuffix(summary["eur"]), summary["eur"], false)
+	// 4. Euro         (y=880)
+	drawQuoteRow(880, "EURO – BCB"+destSuffix(summary["eur"]), summary["eur"], false)
 
-	// 5. Oro          (y=1380)
-	drawSingleRow(1380, "ORO (TROY OZ) – BCB"+destSuffix(summary["oro"]), "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
+	// 5. Oro          (y=1140)
+	drawSingleRow(1140, "ORO (TROY OZ) – BCB"+destSuffix(summary["oro"]), "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
 
-	// 6. Plata        (y=1700)
-	drawSingleRow(1700, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
+	// 6. Plata        (y=1400)
+	drawSingleRow(1400, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
 
-	// 7. UFV          (y=2020)
-	drawSingleRow(2020, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
+	// 7. UFV          (y=1660)
+	drawSingleRow(1660, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
 
 	// Footer global (hora de generación de la imagen)
 	drawer.Face = tinyFace
