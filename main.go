@@ -94,27 +94,39 @@ func main() {
 
 			usdRef := summary["usd referencial"]
 
-			// umbral USDT (cfg.Umbral): referencia para calcular spike de USDT
-			// Se inicializa con data.Bid la primera vez, luego solo cambia si hay spike.
+			// umbral USDT (cfg.Umbral): referencia para calcular cambios de precio
 			usdtUmbralNull := !cfg.Umbral.Valid
 			currentUmbralUSDT := data.Bid
 			if !usdtUmbralNull {
 				currentUmbralUSDT = cfg.Umbral.Float64
 			}
 
-			// umbral USD Referencial (cfg.UmbralReferencial): referencia para spike de USD Ref
+			// umbral USD Referencial (cfg.UmbralReferencial): referencia para cambios de precio
 			refUmbralNull := !cfg.UmbralReferencial.Valid
 			currentUmbralRef := usdRef.Cotizacion
 			if !refUmbralNull {
 				currentUmbralRef = cfg.UmbralReferencial.Float64
 			}
 
+			// Si no hay umbrales definidos, guardamos las referencias actuales y no hacemos nada más.
+			hasUmbrales := !usdtUmbralNull && !refUmbralNull
+			if !hasUmbrales {
+				ui.Info("Sin umbrales definidos — guardando referencias y omitiendo notificación de Telegram.")
+				saveConfig := func(msgID string) {
+					if err := database.UpdateConfig(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
+						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
+					}
+				}
+				saveConfig(cfg.MessageID.String)
+				return
+			}
+
 			diffUSDT := data.Bid - currentUmbralUSDT
 			diffRef := usdRef.Cotizacion - currentUmbralRef
 
-			spikeUSDT := !usdtUmbralNull && math.Abs(diffUSDT) >= spikeThreshold
-			spikeRef := !refUmbralNull && math.Abs(diffRef) >= spikeThreshold
-			isSpike := spikeUSDT || spikeRef
+			outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
+			outsideRef := math.Abs(diffRef) > spikeThreshold
+			isOutside := outsideUSDT || outsideRef
 
 			// diff principal para el mensaje de spike (el mayor)
 			diff := diffUSDT
@@ -144,7 +156,6 @@ func main() {
 			switch {
 
 			case !hasMessage:
-				// REGLA 1: No hay messageID → enviar nuevo y guardarlo sí o sí
 				ui.Info("Sin messageID — enviando mensaje nuevo...")
 				msg, btn := telegram.FormatDailyMessage(summary)
 				newID, e := tryS(msg, true, btn)
@@ -155,9 +166,8 @@ func main() {
 					saveConfig(strconv.Itoa(newID))
 				}
 
-			case isSpike:
-				// REGLA 3: Spike (±0.50) → enviar mensaje NUEVO, actualizar messageID y umbrales
-				ui.Info(fmt.Sprintf("🚨 SPIKE: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
+			case isOutside:
+				ui.Info(fmt.Sprintf("🚨 Fuera del umbral: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
 					data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
 				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbralUSDT, diff, diff > 0)
 				newID, e := tryS(msg, false, btn)
@@ -169,7 +179,6 @@ func main() {
 				}
 
 			default:
-				// REGLA 2: Hay messageID, sin spike → editar mensaje existente
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
 				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
 				msg, btn := telegram.FormatDailyMessage(summary)
@@ -180,7 +189,6 @@ func main() {
 					editErr = bot.EditMessage(mid, msg, btn)
 				}
 				if editErr != nil {
-					// Mensaje borrado o inaccesible → enviar uno nuevo
 					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", editErr))
 					newID, e := tryS(msg, true, btn)
 					if e != nil {
