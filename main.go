@@ -153,6 +153,13 @@ func main() {
 				}
 			}
 
+			// saveMessageID: actualiza solo el messageID, sin cambiar los umbrales existentes
+			saveMessageID := func(msgID string) {
+				if err := database.UpdateConfigMessageID(today, msgID); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando messageID en config: %v", err))
+				}
+			}
+
 			switch {
 
 			case !hasMessage:
@@ -163,7 +170,7 @@ func main() {
 					ui.Warn(fmt.Sprintf("Error enviando mensaje: %v", e))
 				} else {
 					ui.Success(fmt.Sprintf("Mensaje enviado → msgID=%d", newID))
-					saveConfig(strconv.Itoa(newID))
+					saveMessageID(strconv.Itoa(newID))
 				}
 
 			case isOutside:
@@ -195,11 +202,11 @@ func main() {
 						ui.Warn(fmt.Sprintf("Error enviando fallback: %v", e))
 					} else {
 						ui.Success(fmt.Sprintf("Nuevo mensaje enviado → msgID=%d", newID))
-						saveConfig(strconv.Itoa(newID))
+						saveMessageID(strconv.Itoa(newID))
 					}
 				} else {
 					ui.Success("Mensaje actualizado correctamente")
-					saveConfig(strconv.Itoa(mid))
+					saveMessageID(strconv.Itoa(mid))
 				}
 			}
 		}

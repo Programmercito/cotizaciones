@@ -174,6 +174,26 @@ func (d *DB) UpdateConfig(currentDate, messageID string, umbralUSDT, umbralRef f
 	return nil
 }
 
+// UpdateConfigMessageID updates only the currentdate and messageid while preserving metrics thresholds.
+func (d *DB) UpdateConfigMessageID(currentDate, messageID string) error {
+	var mID any = messageID
+	if messageID == "" {
+		mID = nil
+	}
+	res, err := d.conn.Exec(
+		"UPDATE config SET currentdate = ?, messageid = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		currentDate, mID,
+	)
+	if err != nil {
+		return fmt.Errorf("error updating config messageID: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("config: ninguna fila actualizada (tabla vacía?)")
+	}
+	return nil
+}
+
 // DeleteOlderThan deletes cotizaciones older than the given duration and returns the count deleted.
 func (d *DB) DeleteOlderThan(d1 time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-d1).Format(timeFmt)
