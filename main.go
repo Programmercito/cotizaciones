@@ -89,7 +89,7 @@ func main() {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
 
-			const spikeThreshold = 0.30
+			const spikeThreshold = 0.20
 			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 
 			usdRef := summary["usd referencial"]
