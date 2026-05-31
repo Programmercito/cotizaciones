@@ -14,7 +14,6 @@ import (
 const siteURL = "https://cotizaciones.devcito.org/"
 
 // fmtDT convierte un datetime de la DB al formato legible para Telegram.
-// Si el valor contiene hora, muestra segundos; si es solo fecha, muestra solo la fecha.
 func fmtDT(dt string) string {
 	layouts := []string{
 		db.TimeFmt,
@@ -67,15 +66,49 @@ func New(token, chatID string) (*Bot, error) {
 
 // ── Message formatters ────────────────────────────────────────────────────────
 
-// FormatSpikeMessage returns a visually rich HTML alert for a price spike.
-func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+// FormatUSDMessage returns a clean daily-summary HTML message for USDT/USD.
+func FormatUSDMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
 	referencial := summary["usd referencial"]
-	euro := summary["eur"]
-	oro := summary["oro"]
-	plata := summary["plata"]
-	ufv := summary["ufv"]
+	generatedAt := time.Now().Format(db.DisplayTimeFmt)
+
+	text := strings.Join([]string{
+		"<blockquote><b>☀️ Resumen USD / USDT</b></blockquote>",
+		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
+		"",
+		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
+		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
+		"",
+		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
+		"",
+		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		"",
+		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
+	}, "\n")
+
+	btn := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
+		),
+	)
+
+	return text, btn
+}
+
+// FormatSpikeUSDMessage returns a visually rich HTML alert for a USD/USDT price spike.
+func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+	usdt := summary["USDT"]
+	oficial := summary["usd oficial"]
+	referencial := summary["usd referencial"]
 	pct := (math.Abs(diff) / umbral) * 100
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
@@ -112,22 +145,6 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
 		"",
-		"🇪🇺 <b>Euro:</b>" + fmtDest(euro.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
-		"",
-		"🥇 <b>Oro (Troy Oz):</b>" + fmtDest(oro.MonedaDest),
-		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
-		"",
-		"🥈 <b>Plata (Troy Oz):</b>" + fmtDest(plata.MonedaDest),
-		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
-		"",
-		"📐 <b>UFV:</b>" + fmtDest(ufv.MonedaDest),
-		fmt.Sprintf("💵 Valor:  <code>%.5f</code>", ufv.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
 		"────────────────────────",
 		fmt.Sprintf("📊 Variación USDT: <code>%s%.4f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
 		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.4f</code>", umbral),
@@ -143,11 +160,8 @@ func FormatSpikeMessage(summary map[string]db.Cotizacion, umbral, diff float64, 
 	return text, btn
 }
 
-// FormatDailyMessage returns a clean daily-summary HTML message.
-func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
-	usdt := summary["USDT"]
-	oficial := summary["usd oficial"]
-	referencial := summary["usd referencial"]
+// FormatRestoMessage returns a clean daily-summary HTML message for Euro/Oro/Plata/UFV.
+func FormatRestoMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
 	euro := summary["eur"]
 	oro := summary["oro"]
 	plata := summary["plata"]
@@ -155,23 +169,8 @@ func FormatDailyMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
 	text := strings.Join([]string{
-		"<blockquote><b>☀️ Resumen de Cotizaciones</b></blockquote>",
-		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
-		"",
-		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.4f</code>", usdt.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.4f</code>", usdt.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
-		"",
-		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
-		"",
-		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		"<blockquote><b>☀️ Resumen Cotizaciones</b></blockquote>",
+		"🏛️ <b>Mercados:</b> BCB / Internacional",
 		"",
 		"🇪🇺 <b>Euro:</b>" + fmtDest(euro.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),

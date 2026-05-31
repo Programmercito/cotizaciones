@@ -40,6 +40,7 @@ type Config struct {
 	CurrentDate       string
 	ChatID            string
 	MessageID         sql.NullString
+	MessageIDUSD      sql.NullString
 	Umbral            sql.NullFloat64 // referencia USDT
 	UmbralReferencial sql.NullFloat64 // referencia USD Referencial
 }
@@ -69,6 +70,8 @@ func New() (*DB, error) {
 	_, _ = conn.Exec("ALTER TABLE cotizaciones ADD COLUMN purchase REAL DEFAULT 0")
 	// Ensure 'umbral_referencial' column exists (migration)
 	_, _ = conn.Exec("ALTER TABLE config ADD COLUMN umbral_referencial REAL")
+	// Ensure 'messageidusd' column exists (migration)
+	_, _ = conn.Exec("ALTER TABLE config ADD COLUMN messageidusd TEXT")
 
 	return &DB{conn: conn}, nil
 }
@@ -146,8 +149,8 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 // GetConfig retrieves the single config record
 func (d *DB) GetConfig() (*Config, error) {
 	var cfg Config
-	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, umbral, umbral_referencial FROM config LIMIT 1").
-		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.Umbral, &cfg.UmbralReferencial)
+	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, messageidusd, umbral, umbral_referencial FROM config LIMIT 1").
+		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.MessageIDUSD, &cfg.Umbral, &cfg.UmbralReferencial)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config: %w", err)
 	}
@@ -186,6 +189,46 @@ func (d *DB) UpdateConfigMessageID(currentDate, messageID string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("error updating config messageID: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("config: ninguna fila actualizada (tabla vacía?)")
+	}
+	return nil
+}
+
+// UpdateConfigUSD updates currentdate, messageidusd, umbral (USDT) y umbral_referencial (USD Ref)
+func (d *DB) UpdateConfigUSD(currentDate, messageIDUSD string, umbralUSDT, umbralRef float64) error {
+	var mID any = messageIDUSD
+	if messageIDUSD == "" {
+		mID = nil
+	}
+	res, err := d.conn.Exec(
+		"UPDATE config SET currentdate = ?, messageidusd = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		currentDate, mID, umbralUSDT, umbralRef,
+	)
+	if err != nil {
+		return fmt.Errorf("error updating config USD: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("config: ninguna fila actualizada (tabla vacía?)")
+	}
+	return nil
+}
+
+// UpdateConfigMessageIDUSD updates only the currentdate and messageidusd while preserving metrics thresholds.
+func (d *DB) UpdateConfigMessageIDUSD(currentDate, messageIDUSD string) error {
+	var mID any = messageIDUSD
+	if messageIDUSD == "" {
+		mID = nil
+	}
+	res, err := d.conn.Exec(
+		"UPDATE config SET currentdate = ?, messageidusd = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		currentDate, mID,
+	)
+	if err != nil {
+		return fmt.Errorf("error updating config messageIDUSD: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {

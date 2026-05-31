@@ -70,12 +70,15 @@ func main() {
 		ui.Warn(fmt.Sprintf("Error obteniendo resumen para Telegram: %v", err))
 	}
 
-	imagePath, imageErr := telegram.GeneratePriceImage(summary)
-	if imageErr != nil {
-		ui.Warn(fmt.Sprintf("No se pudo generar la imagen de cotización: %v", imageErr))
+	// Generate images for both messages
+	imagePathUSD, imageErrUSD := telegram.GenerateUSDImage(summary)
+	if imageErrUSD != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar la imagen USD: %v", imageErrUSD))
 	}
-	if imagePath != "" {
-		defer os.Remove(imagePath)
+
+	imagePathResto, imageErrResto := telegram.GenerateRestoImage(summary)
+	if imageErrResto != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar la imagen Resto: %v", imageErrResto))
 	}
 
 	cfg, err := database.GetConfig()
@@ -88,56 +91,12 @@ func main() {
 		} else {
 			ui.Success("Bot de Telegram conectado")
 			today := time.Now().Format("2006-01-02")
-
 			const spikeThreshold = 0.20
-			hasMessage := cfg.MessageID.Valid && cfg.MessageID.String != ""
 
-			usdRef := summary["usd referencial"]
-
-			// umbral USDT (cfg.Umbral): referencia para calcular cambios de precio
-			usdtUmbralNull := !cfg.Umbral.Valid
-			currentUmbralUSDT := data.Bid
-			if !usdtUmbralNull {
-				currentUmbralUSDT = cfg.Umbral.Float64
-			}
-
-			// umbral USD Referencial (cfg.UmbralReferencial): referencia para cambios de precio
-			refUmbralNull := !cfg.UmbralReferencial.Valid
-			currentUmbralRef := usdRef.Cotizacion
-			if !refUmbralNull {
-				currentUmbralRef = cfg.UmbralReferencial.Float64
-			}
-
-			// Si no hay umbrales definidos, guardamos las referencias actuales y no hacemos nada más.
-			hasUmbrales := !usdtUmbralNull && !refUmbralNull
-			if !hasUmbrales {
-				ui.Info("Sin umbrales definidos — guardando referencias y omitiendo notificación de Telegram.")
-				saveConfig := func(msgID string) {
-					if err := database.UpdateConfig(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
-						ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
-					}
-				}
-				saveConfig(cfg.MessageID.String)
-				return
-			}
-
-			diffUSDT := data.Bid - currentUmbralUSDT
-			diffRef := usdRef.Cotizacion - currentUmbralRef
-
-			outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
-			outsideRef := math.Abs(diffRef) > spikeThreshold
-			isOutside := outsideUSDT || outsideRef
-
-			// diff principal para el mensaje de spike (el mayor)
-			diff := diffUSDT
-			if math.Abs(diffRef) > math.Abs(diffUSDT) {
-				diff = diffRef
-			}
-
-			// tryS: envía foto si existe; si falla cae a texto
-			tryS := func(text string, silent bool, btn tgbotapi.InlineKeyboardMarkup) (int, error) {
-				if imagePath != "" {
-					id, e := bot.SendPhoto(imagePath, text, silent, btn)
+			// Generic helpers
+			trySend := func(imgPath, text string, silent bool, btn tgbotapi.InlineKeyboardMarkup) (int, error) {
+				if imgPath != "" {
+					id, e := bot.SendPhoto(imgPath, text, silent, btn)
 					if e == nil {
 						return id, nil
 					}
@@ -146,67 +105,140 @@ func main() {
 				return bot.SendMessage(text, silent, btn)
 			}
 
-			// saveConfig: guarda messageID y ambos umbrales con los precios actuales
-			saveConfig := func(msgID string) {
-				if err := database.UpdateConfig(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
-					ui.Warn(fmt.Sprintf("Error guardando config: %v", err))
+			editMsg := func(imgPath string, mid int, text string, btn tgbotapi.InlineKeyboardMarkup) error {
+				if imgPath != "" {
+					return bot.EditPhoto(mid, imgPath, text, btn)
 				}
+				return bot.EditMessage(mid, text, btn)
 			}
 
-			// saveMessageID: actualiza solo el messageID, sin cambiar los umbrales existentes
+			// --- Resto message (Euro + Oro + Plata + UFV) ---
+			hasMessageResto := cfg.MessageID.Valid && cfg.MessageID.String != ""
+
 			saveMessageID := func(msgID string) {
 				if err := database.UpdateConfigMessageID(today, msgID); err != nil {
-					ui.Warn(fmt.Sprintf("Error guardando messageID en config: %v", err))
+					ui.Warn(fmt.Sprintf("Error guardando messageID: %v", err))
 				}
 			}
 
 			switch {
-
-			case !hasMessage:
-				ui.Info("Sin messageID — enviando mensaje nuevo...")
-				msg, btn := telegram.FormatDailyMessage(summary)
-				newID, e := tryS(msg, true, btn)
+			case !hasMessageResto:
+				ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
+				msg, btn := telegram.FormatRestoMessage(summary)
+				newID, e := trySend(imagePathResto, msg, true, btn)
 				if e != nil {
-					ui.Warn(fmt.Sprintf("Error enviando mensaje: %v", e))
+					ui.Warn(fmt.Sprintf("Error enviando mensaje Resto: %v", e))
 				} else {
-					ui.Success(fmt.Sprintf("Mensaje enviado → msgID=%d", newID))
+					ui.Success(fmt.Sprintf("Mensaje Resto enviado → msgID=%d", newID))
 					saveMessageID(strconv.Itoa(newID))
-				}
-
-			case isOutside:
-				ui.Info(fmt.Sprintf("🚨 Fuera del umbral: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
-					data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
-				msg, btn := telegram.FormatSpikeMessage(summary, currentUmbralUSDT, diff, diff > 0)
-				newID, e := tryS(msg, false, btn)
-				if e != nil {
-					ui.Warn(fmt.Sprintf("Error enviando spike: %v", e))
-				} else {
-					ui.Success(fmt.Sprintf("Spike enviado → nuevo msgID=%d", newID))
-					saveConfig(strconv.Itoa(newID))
 				}
 
 			default:
 				mid, _ := strconv.Atoi(cfg.MessageID.String)
-				ui.Info(fmt.Sprintf("Actualizando mensaje existente (id=%d)...", mid))
-				msg, btn := telegram.FormatDailyMessage(summary)
-				var editErr error
-				if imagePath != "" {
-					editErr = bot.EditPhoto(mid, imagePath, msg, btn)
-				} else {
-					editErr = bot.EditMessage(mid, msg, btn)
-				}
+				ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
+				msg, btn := telegram.FormatRestoMessage(summary)
+				editErr := editMsg(imagePathResto, mid, msg, btn)
 				if editErr != nil {
-					ui.Warn(fmt.Sprintf("No se pudo editar (%v) — enviando nuevo...", editErr))
-					newID, e := tryS(msg, true, btn)
+					ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
+					newID, e := trySend(imagePathResto, msg, true, btn)
 					if e != nil {
-						ui.Warn(fmt.Sprintf("Error enviando fallback: %v", e))
+						ui.Warn(fmt.Sprintf("Error enviando fallback Resto: %v", e))
 					} else {
-						ui.Success(fmt.Sprintf("Nuevo mensaje enviado → msgID=%d", newID))
+						ui.Success(fmt.Sprintf("Nuevo mensaje Resto enviado → msgID=%d", newID))
 						saveMessageID(strconv.Itoa(newID))
 					}
 				} else {
-					ui.Success("Mensaje actualizado correctamente")
+					ui.Success("Mensaje Resto actualizado correctamente")
 					saveMessageID(strconv.Itoa(mid))
+				}
+			}
+
+			// --- USD message (USDT + Oficial + Referencial) ---
+			hasMessageUSD := cfg.MessageIDUSD.Valid && cfg.MessageIDUSD.String != ""
+			usdRef := summary["usd referencial"]
+
+			usdtUmbralNull := !cfg.Umbral.Valid
+			currentUmbralUSDT := data.Bid
+			if !usdtUmbralNull {
+				currentUmbralUSDT = cfg.Umbral.Float64
+			}
+
+			refUmbralNull := !cfg.UmbralReferencial.Valid
+			currentUmbralRef := usdRef.Cotizacion
+			if !refUmbralNull {
+				currentUmbralRef = cfg.UmbralReferencial.Float64
+			}
+
+			saveConfigUSD := func(msgID string) {
+				if err := database.UpdateConfigUSD(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando config USD: %v", err))
+				}
+			}
+
+			saveMessageIDUSD := func(msgID string) {
+				if err := database.UpdateConfigMessageIDUSD(today, msgID); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando messageIDUSD: %v", err))
+				}
+			}
+
+			hasUmbrales := !usdtUmbralNull && !refUmbralNull
+			if !hasUmbrales {
+				ui.Info("Sin umbrales definidos — guardando referencias y omitiendo notificación USD.")
+				saveConfigUSD(cfg.MessageIDUSD.String)
+			} else {
+				diffUSDT := data.Bid - currentUmbralUSDT
+				diffRef := usdRef.Cotizacion - currentUmbralRef
+				outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
+				outsideRef := math.Abs(diffRef) > spikeThreshold
+				isOutside := outsideUSDT || outsideRef
+
+				diff := diffUSDT
+				if math.Abs(diffRef) > math.Abs(diffUSDT) {
+					diff = diffRef
+				}
+
+				switch {
+				case !hasMessageUSD:
+					ui.Info("Sin messageIDUSD — enviando mensaje USD nuevo...")
+					msg, btn := telegram.FormatUSDMessage(summary)
+					newID, e := trySend(imagePathUSD, msg, true, btn)
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando mensaje USD: %v", e))
+					} else {
+						ui.Success(fmt.Sprintf("Mensaje USD enviado → msgID=%d", newID))
+						saveMessageIDUSD(strconv.Itoa(newID))
+					}
+
+				case isOutside:
+					ui.Info(fmt.Sprintf("🚨 Fuera del umbral USD: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
+						data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
+					msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diff, diff > 0)
+					newID, e := trySend(imagePathUSD, msg, false, btn)
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando spike USD: %v", e))
+					} else {
+						ui.Success(fmt.Sprintf("Spike USD enviado → nuevo msgID=%d", newID))
+						saveConfigUSD(strconv.Itoa(newID))
+					}
+
+				default:
+					mid, _ := strconv.Atoi(cfg.MessageIDUSD.String)
+					ui.Info(fmt.Sprintf("Actualizando mensaje USD existente (id=%d)...", mid))
+					msg, btn := telegram.FormatUSDMessage(summary)
+					editErr := editMsg(imagePathUSD, mid, msg, btn)
+					if editErr != nil {
+						ui.Warn(fmt.Sprintf("No se pudo editar USD (%v) — enviando nuevo...", editErr))
+						newID, e := trySend(imagePathUSD, msg, true, btn)
+						if e != nil {
+							ui.Warn(fmt.Sprintf("Error enviando fallback USD: %v", e))
+						} else {
+							ui.Success(fmt.Sprintf("Nuevo mensaje USD enviado → msgID=%d", newID))
+							saveMessageIDUSD(strconv.Itoa(newID))
+						}
+					} else {
+						ui.Success("Mensaje USD actualizado correctamente")
+						saveMessageIDUSD(strconv.Itoa(mid))
+					}
 				}
 			}
 		}
@@ -234,8 +266,8 @@ func main() {
 	}
 	ui.Success("Cambios subidos correctamente")
 
-	// 7. Cleanup old cotizaciones (older than 30 days)
-	ui.StepStart(7, totalSteps-1, "🧹", "Limpiando registros antiguos (> 30 días)...")
+	// 7. Cleanup old cotizaciones (older than 60 days)
+	ui.StepStart(7, totalSteps-1, "🧹", "Limpiando registros antiguos (> 60 días)...")
 	deleted, err := database.DeleteOlderThan(2 * 30 * 24 * time.Hour)
 	if err != nil {
 		exitWithError("Error limpiando registros: %v", err)
