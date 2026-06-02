@@ -51,7 +51,7 @@ func newImageBuilder(w, h int) (*imageBuilder, error) {
 
 	titleFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 38, DPI: 72, Hinting: font.HintingFull})
 	labelFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 42, DPI: 72, Hinting: font.HintingFull})
-	priceFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 84, DPI: 72, Hinting: font.HintingFull})
+	priceFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 168, DPI: 72, Hinting: font.HintingFull})
 	smallFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 26, DPI: 72, Hinting: font.HintingFull})
 	tinyFace, _ := opentype.NewFace(faceData, &opentype.FaceOptions{Size: 22, DPI: 72, Hinting: font.HintingFull})
 
@@ -126,40 +126,34 @@ func (b *imageBuilder) drawQuoteRow(y int, title string, c db.Cotizacion, isPrec
 
 	b.drawer.Face = b.tinyFace
 	b.drawer.Src = b.muted
-	b.drawer.Dot = fixed.P(62, y+28)
+	b.drawer.Dot = fixed.P(62, y+32)
 	b.drawer.DrawString("Actualizado: " + formatDatetime(c.Datetime))
 
 	b.drawer.Face = b.smallFace
 	b.drawer.Src = b.red
-	b.drawer.Dot = fixed.P(80, y+80)
+	b.drawer.Dot = fixed.P(80, y+70)
 	b.drawer.DrawString("VENTA")
 
-	b.drawer.Face = b.priceFace
-	b.drawer.Src = b.white
-	vMsg := fmt.Sprintf("%.2f", c.Cotizacion)
-	if isPrecision {
-		vMsg = fmt.Sprintf("%.4f", c.Cotizacion)
-	}
-	b.drawer.Dot = fixed.P(80, y+175)
-	b.drawer.DrawString(vMsg)
+		b.drawer.Face = b.priceFace
+		b.drawer.Src = b.white
+		vMsg := fmt.Sprintf("%.2f", c.Cotizacion)
+		b.drawer.Dot = fixed.P(80, y+212)
+		b.drawer.DrawString(vMsg)
 
-	b.drawer.Face = b.smallFace
-	b.drawer.Src = b.green
-	b.drawer.Dot = fixed.P(650, y+80)
-	b.drawer.DrawString("COMPRA")
+		b.drawer.Face = b.smallFace
+		b.drawer.Src = b.green
+		b.drawer.Dot = fixed.P(610, y+70)
+		b.drawer.DrawString("COMPRA")
 
-	b.drawer.Face = b.priceFace
-	b.drawer.Src = b.white
-	cMsg := fmt.Sprintf("%.2f", c.Purchase)
-	if isPrecision {
-		cMsg = fmt.Sprintf("%.4f", c.Purchase)
-	}
-	b.drawer.Dot = fixed.P(650, y+175)
-	b.drawer.DrawString(cMsg)
+		b.drawer.Face = b.priceFace
+		b.drawer.Src = b.white
+		cMsg := fmt.Sprintf("%.2f", c.Purchase)
+		b.drawer.Dot = fixed.P(610, y+212)
+		b.drawer.DrawString(cMsg)
 
-	draw.Draw(b.img, image.Rect(60, y+205, b.w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
+	draw.Draw(b.img, image.Rect(60, y+260, b.w-60, y+262), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
 
-	return y + 260
+	return y + 330
 }
 
 func (b *imageBuilder) drawSingleRow(y int, title, valueLabel string, value float64, fmtStr string, c db.Cotizacion) int {
@@ -170,22 +164,22 @@ func (b *imageBuilder) drawSingleRow(y int, title, valueLabel string, value floa
 
 	b.drawer.Face = b.tinyFace
 	b.drawer.Src = b.muted
-	b.drawer.Dot = fixed.P(62, y+28)
+	b.drawer.Dot = fixed.P(62, y+32)
 	b.drawer.DrawString("Actualizado: " + formatDatetime(c.Datetime))
 
 	b.drawer.Face = b.smallFace
 	b.drawer.Src = b.gold
-	b.drawer.Dot = fixed.P(80, y+80)
+	b.drawer.Dot = fixed.P(80, y+70)
 	b.drawer.DrawString(valueLabel)
 
 	b.drawer.Face = b.priceFace
 	b.drawer.Src = b.white
-	b.drawer.Dot = fixed.P(80, y+175)
+	b.drawer.Dot = fixed.P(80, y+212)
 	b.drawer.DrawString(fmt.Sprintf(fmtStr, value))
 
-	draw.Draw(b.img, image.Rect(60, y+205, b.w-60, y+207), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
+	draw.Draw(b.img, image.Rect(60, y+260, b.w-60, y+262), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
 
-	return y + 260
+	return y + 330
 }
 
 func (b *imageBuilder) saveTo(path string) error {
@@ -225,7 +219,7 @@ func destSuffix(c db.Cotizacion) string {
 // GenerateUSDImage creates a PNG with USDT, Official and Referential quotes.
 func GenerateUSDImage(summary map[string]db.Cotizacion) (string, error) {
 	const outPath = "/opt/osbo/cotiza/usdt.png"
-	b, err := newImageBuilder(1200, 1050)
+	b, err := newImageBuilder(1200, 1200)
 	if err != nil {
 		return "", err
 	}
@@ -248,7 +242,7 @@ func GenerateUSDImage(summary map[string]db.Cotizacion) (string, error) {
 // GenerateRestoImage creates a PNG with Euro, Oro, Plata and UFV quotes.
 func GenerateRestoImage(summary map[string]db.Cotizacion) (string, error) {
 	const outPath = "/opt/osbo/cotiza/resto.png"
-	b, err := newImageBuilder(1200, 1350)
+	b, err := newImageBuilder(1200, 1500)
 	if err != nil {
 		return "", err
 	}
@@ -260,7 +254,7 @@ func GenerateRestoImage(summary map[string]db.Cotizacion) (string, error) {
 	y = b.drawQuoteRow(y, "EURO – BCB"+destSuffix(summary["eur"]), summary["eur"], false)
 	y = b.drawSingleRow(y, "ORO (TROY OZ) – BCB"+destSuffix(summary["oro"]), "PRECIO", summary["oro"].Cotizacion, "%.2f", summary["oro"])
 	y = b.drawSingleRow(y, "PLATA (TROY OZ) – BCB"+destSuffix(summary["plata"]), "PRECIO", summary["plata"].Cotizacion, "%.2f", summary["plata"])
-	y = b.drawSingleRow(y, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.5f", summary["ufv"])
+	y = b.drawSingleRow(y, "UFV – BCB"+destSuffix(summary["ufv"]), "VALOR", summary["ufv"].Cotizacion, "%.2f", summary["ufv"])
 
 	b.drawFooter()
 	if err := b.saveTo(outPath); err != nil {

@@ -67,8 +67,8 @@ func Fatal(msg string) {
 // Prices prints the bid and purchase prices
 func Prices(bid, purchase float64) {
 	fmt.Println()
-	fmt.Printf("        %s%s💵  Venta:   %.4f BOB%s\n", White, Bold, bid, Reset)
-	fmt.Printf("        %s%s🛒  Compra:  %.4f BOB%s\n", White, Bold, purchase, Reset)
+	fmt.Printf("        %s%s💵  Venta:   %.2f BOB%s\n", White, Bold, bid, Reset)
+	fmt.Printf("        %s%s🛒  Compra:  %.2f BOB%s\n", White, Bold, purchase, Reset)
 	fmt.Println()
 }
 

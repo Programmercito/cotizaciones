@@ -210,7 +210,7 @@ func main() {
 					}
 
 				case isOutside:
-					ui.Info(fmt.Sprintf("🚨 Fuera del umbral USD: USDT=%.4f(dif=%+.4f) Ref=%.4f(dif=%+.4f)",
+					ui.Info(fmt.Sprintf("🚨 Fuera del umbral USD: USDT=%.2f(dif=%+.2f) Ref=%.2f(dif=%+.2f)",
 						data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
 					msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diff, diff > 0)
 					newID, e := trySend(imagePathUSD, msg, false, btn)
