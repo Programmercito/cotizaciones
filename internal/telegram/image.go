@@ -142,13 +142,13 @@ func (b *imageBuilder) drawQuoteRow(y int, title string, c db.Cotizacion, isPrec
 
 	b.drawer.Face = b.smallFace
 	b.drawer.Src = b.green
-	b.drawer.Dot = fixed.P(520, y+70)
+	b.drawer.Dot = fixed.P(535, y+70)
 	b.drawer.DrawString("COMPRA")
 
 	b.drawer.Face = b.priceFace
 	b.drawer.Src = b.white
 	cMsg := fmt.Sprintf("%.2f", c.Purchase)
-	b.drawer.Dot = fixed.P(520, y+212)
+	b.drawer.Dot = fixed.P(535, y+212)
 	b.drawer.DrawString(cMsg)
 
 	draw.Draw(b.img, image.Rect(60, y+260, b.w-60, y+262), &image.Uniform{C: color.RGBA{40, 50, 70, 255}}, image.Point{}, draw.Src)
