@@ -107,7 +107,7 @@ func (b *imageBuilder) drawQRs() {
 	b.drawer.Src = b.muted
 	b.drawer.Dot = fixed.P(qrX, qr1TitleY)
 	b.drawer.DrawString("Telegram")
-	drawQR("https://t.me/usdtbolivia", qrX, qr1Top)
+	drawQR("https://t.me/usdbolivia", qrX, qr1Top)
 
 	qr2TitleY := qr1Top + qrSize + 20 + 22
 	qr2Top := qr1Top + qrSize + 20 + 26
