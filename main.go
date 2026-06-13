@@ -112,49 +112,8 @@ func main() {
 				return bot.EditMessage(mid, text, btn)
 			}
 
-			// --- Resto message (Euro + Oro + Plata + UFV) ---
-			hasMessageResto := cfg.MessageID.Valid && cfg.MessageID.String != ""
-
-			saveMessageID := func(msgID string) {
-				if err := database.UpdateConfigMessageID(today, msgID); err != nil {
-					ui.Warn(fmt.Sprintf("Error guardando messageID: %v", err))
-				}
-			}
-
-			switch {
-			case !hasMessageResto:
-				ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
-				msg, btn := telegram.FormatRestoMessage(summary)
-				newID, e := trySend(imagePathResto, msg, true, btn)
-				if e != nil {
-					ui.Warn(fmt.Sprintf("Error enviando mensaje Resto: %v", e))
-				} else {
-					ui.Success(fmt.Sprintf("Mensaje Resto enviado → msgID=%d", newID))
-					saveMessageID(strconv.Itoa(newID))
-				}
-
-			default:
-				mid, _ := strconv.Atoi(cfg.MessageID.String)
-				ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
-				msg, btn := telegram.FormatRestoMessage(summary)
-				editErr := editMsg(imagePathResto, mid, msg, btn)
-				if editErr != nil {
-					ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
-					newID, e := trySend(imagePathResto, msg, true, btn)
-					if e != nil {
-						ui.Warn(fmt.Sprintf("Error enviando fallback Resto: %v", e))
-					} else {
-						ui.Success(fmt.Sprintf("Nuevo mensaje Resto enviado → msgID=%d", newID))
-						saveMessageID(strconv.Itoa(newID))
-					}
-				} else {
-					ui.Success("Mensaje Resto actualizado correctamente")
-					saveMessageID(strconv.Itoa(mid))
-				}
-			}
-
-			// --- USD message (USDT + Oficial + Referencial) ---
-			hasMessageUSD := cfg.MessageIDUSD.Valid && cfg.MessageIDUSD.String != ""
+			// Threshold calculations must happen before any message is sent,
+			// because a USD spike forces both messages to be re-sent together.
 			usdRef := summary["usd referencial"]
 
 			usdtUmbralNull := !cfg.Umbral.Valid
@@ -169,9 +128,29 @@ func main() {
 				currentUmbralRef = cfg.UmbralReferencial.Float64
 			}
 
-			saveConfigUSD := func(msgID string) {
-				if err := database.UpdateConfigUSD(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
-					ui.Warn(fmt.Sprintf("Error guardando config USD: %v", err))
+			hasUmbrales := !usdtUmbralNull && !refUmbralNull
+
+			var diffUSDT, diffRef, diff float64
+			var isOutside bool
+			if hasUmbrales {
+				diffUSDT = data.Bid - currentUmbralUSDT
+				diffRef = usdRef.Cotizacion - currentUmbralRef
+				outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
+				outsideRef := math.Abs(diffRef) > spikeThreshold
+				isOutside = outsideUSDT || outsideRef
+
+				diff = diffUSDT
+				if math.Abs(diffRef) > math.Abs(diffUSDT) {
+					diff = diffRef
+				}
+			}
+
+			hasMessageResto := cfg.MessageID.Valid && cfg.MessageID.String != ""
+			hasMessageUSD := cfg.MessageIDUSD.Valid && cfg.MessageIDUSD.String != ""
+
+			saveMessageIDResto := func(msgID string) {
+				if err := database.UpdateConfigMessageID(today, msgID); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando messageID: %v", err))
 				}
 			}
 
@@ -181,54 +160,124 @@ func main() {
 				}
 			}
 
-			hasUmbrales := !usdtUmbralNull && !refUmbralNull
-			if !hasUmbrales {
+			saveConfigUSD := func(msgID string) {
+				if err := database.UpdateConfigUSD(today, msgID, data.Bid, usdRef.Cotizacion); err != nil {
+					ui.Warn(fmt.Sprintf("Error guardando config USD: %v", err))
+				}
+			}
+
+			sendResto := func() (int, error) {
+				msg, btn := telegram.FormatRestoMessage(summary)
+				return trySend(imagePathResto, msg, true, btn)
+			}
+
+			sendUSD := func() (int, error) {
+				msg, btn := telegram.FormatUSDMessage(summary)
+				return trySend(imagePathUSD, msg, true, btn)
+			}
+
+			sendSpikeUSD := func() (int, error) {
+				msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diff, diff > 0)
+				return trySend(imagePathUSD, msg, false, btn)
+			}
+
+			editResto := func(mid int) error {
+				msg, btn := telegram.FormatRestoMessage(summary)
+				return editMsg(imagePathResto, mid, msg, btn)
+			}
+
+			editUSD := func(mid int) error {
+				msg, btn := telegram.FormatUSDMessage(summary)
+				return editMsg(imagePathUSD, mid, msg, btn)
+			}
+
+			switch {
+			case !hasUmbrales:
 				ui.Info("Sin umbrales definidos — guardando referencias y omitiendo notificación USD.")
 				saveConfigUSD(cfg.MessageIDUSD.String)
-			} else {
-				diffUSDT := data.Bid - currentUmbralUSDT
-				diffRef := usdRef.Cotizacion - currentUmbralRef
-				outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
-				outsideRef := math.Abs(diffRef) > spikeThreshold
-				isOutside := outsideUSDT || outsideRef
 
-				diff := diffUSDT
-				if math.Abs(diffRef) > math.Abs(diffUSDT) {
-					diff = diffRef
+				if hasMessageResto {
+					mid, _ := strconv.Atoi(cfg.MessageID.String)
+					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
+					if editErr := editResto(mid); editErr != nil {
+						ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
+						newID, e := sendResto()
+						if e != nil {
+							ui.Warn(fmt.Sprintf("Error enviando fallback Resto: %v", e))
+						} else {
+							ui.Success(fmt.Sprintf("Nuevo mensaje Resto enviado → msgID=%d", newID))
+							saveMessageIDResto(strconv.Itoa(newID))
+						}
+					} else {
+						ui.Success("Mensaje Resto actualizado correctamente")
+						saveMessageIDResto(strconv.Itoa(mid))
+					}
+				} else {
+					ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
+					newID, e := sendResto()
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando mensaje Resto: %v", e))
+					} else {
+						ui.Success(fmt.Sprintf("Mensaje Resto enviado → msgID=%d", newID))
+						saveMessageIDResto(strconv.Itoa(newID))
+					}
 				}
 
-				switch {
-				case !hasMessageUSD:
-					ui.Info("Sin messageIDUSD — enviando mensaje USD nuevo...")
-					msg, btn := telegram.FormatUSDMessage(summary)
-					newID, e := trySend(imagePathUSD, msg, true, btn)
-					if e != nil {
-						ui.Warn(fmt.Sprintf("Error enviando mensaje USD: %v", e))
-					} else {
-						ui.Success(fmt.Sprintf("Mensaje USD enviado → msgID=%d", newID))
-						saveMessageIDUSD(strconv.Itoa(newID))
-					}
+			case isOutside:
+				ui.Info(fmt.Sprintf("🚨 Fuera del umbral USD: USDT=%.2f(dif=%+.2f) Ref=%.2f(dif=%+.2f) — reenviando ambos mensajes para mantenerlos juntos",
+					data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
 
-				case isOutside:
-					ui.Info(fmt.Sprintf("🚨 Fuera del umbral USD: USDT=%.2f(dif=%+.2f) Ref=%.2f(dif=%+.2f)",
-						data.Bid, diffUSDT, usdRef.Cotizacion, diffRef))
-					msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diff, diff > 0)
-					newID, e := trySend(imagePathUSD, msg, false, btn)
-					if e != nil {
-						ui.Warn(fmt.Sprintf("Error enviando spike USD: %v", e))
-					} else {
-						ui.Success(fmt.Sprintf("Spike USD enviado → nuevo msgID=%d", newID))
-						saveConfigUSD(strconv.Itoa(newID))
-					}
+				newRestoID, errResto := sendResto()
+				if errResto != nil {
+					ui.Warn(fmt.Sprintf("Error enviando mensaje Resto durante spike: %v", errResto))
+				} else {
+					ui.Success(fmt.Sprintf("Mensaje Resto reenviado → msgID=%d", newRestoID))
+					saveMessageIDResto(strconv.Itoa(newRestoID))
+				}
 
-				default:
+				newUSDID, errUSD := sendSpikeUSD()
+				if errUSD != nil {
+					ui.Warn(fmt.Sprintf("Error enviando spike USD: %v", errUSD))
+				} else {
+					ui.Success(fmt.Sprintf("Spike USD enviado → nuevo msgID=%d", newUSDID))
+					saveConfigUSD(strconv.Itoa(newUSDID))
+				}
+
+			default:
+				// No spike: update existing messages when possible.
+				if hasMessageResto {
+					mid, _ := strconv.Atoi(cfg.MessageID.String)
+					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
+					if editErr := editResto(mid); editErr != nil {
+						ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
+						newID, e := sendResto()
+						if e != nil {
+							ui.Warn(fmt.Sprintf("Error enviando fallback Resto: %v", e))
+						} else {
+							ui.Success(fmt.Sprintf("Nuevo mensaje Resto enviado → msgID=%d", newID))
+							saveMessageIDResto(strconv.Itoa(newID))
+						}
+					} else {
+						ui.Success("Mensaje Resto actualizado correctamente")
+						saveMessageIDResto(strconv.Itoa(mid))
+					}
+				} else {
+					ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
+					newID, e := sendResto()
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando mensaje Resto: %v", e))
+					} else {
+						ui.Success(fmt.Sprintf("Mensaje Resto enviado → msgID=%d", newID))
+						saveMessageIDResto(strconv.Itoa(newID))
+					}
+				}
+
+				if hasMessageUSD {
 					mid, _ := strconv.Atoi(cfg.MessageIDUSD.String)
 					ui.Info(fmt.Sprintf("Actualizando mensaje USD existente (id=%d)...", mid))
-					msg, btn := telegram.FormatUSDMessage(summary)
-					editErr := editMsg(imagePathUSD, mid, msg, btn)
-					if editErr != nil {
+					if editErr := editUSD(mid); editErr != nil {
 						ui.Warn(fmt.Sprintf("No se pudo editar USD (%v) — enviando nuevo...", editErr))
-						newID, e := trySend(imagePathUSD, msg, true, btn)
+						newID, e := sendUSD()
 						if e != nil {
 							ui.Warn(fmt.Sprintf("Error enviando fallback USD: %v", e))
 						} else {
@@ -238,6 +287,15 @@ func main() {
 					} else {
 						ui.Success("Mensaje USD actualizado correctamente")
 						saveMessageIDUSD(strconv.Itoa(mid))
+					}
+				} else {
+					ui.Info("Sin messageIDUSD — enviando mensaje USD nuevo...")
+					newID, e := sendUSD()
+					if e != nil {
+						ui.Warn(fmt.Sprintf("Error enviando mensaje USD: %v", e))
+					} else {
+						ui.Success(fmt.Sprintf("Mensaje USD enviado → msgID=%d", newID))
+						saveMessageIDUSD(strconv.Itoa(newID))
 					}
 				}
 			}

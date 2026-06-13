@@ -41,13 +41,14 @@ Two independent messages are sent/edited:
 - Spike threshold: **0.20**.
 - If either threshold is `null`: save current prices as both thresholds, **skip USD message only**, preserve `messageidusd`.
 - No valid `messageidusd`: send new USD summary, save only `messageidusd`.
-- `isOutside == true` for USDT or USD Referencial: send spike alert to USD message, update both thresholds, save new `messageidusd`.
+- `isOutside == true` for USDT or USD Referencial: send spike alert to USD message, **also send a new Resto message** so the pair stays together in the chat, update both thresholds, save new `messageid` and `messageidusd`.
 - `isOutside == false`: edit existing USD message. If edit fails, send new USD message and save only `messageidusd`. Never update thresholds.
 
 **Resto message** (`messageid`): Euro + Oro + Plata + UFV
 - No thresholds, no spike logic.
 - No valid `messageid`: send new Resto summary, save only `messageid`.
 - Valid `messageid`: edit existing Resto message. If edit fails, send new and save only `messageid`.
+- During a USD spike the Resto message is always re-sent together with the USD spike alert so both messages remain paired in the chat.
 
 ## DB schema notes
 
