@@ -37,7 +37,11 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: cotizaciones-binary
-    
+        
+    - name: Print GitHub Runner IP
+      run: |
+        echo "GitHub Runner public IP: $(curl -s https://ipinfo.io/ip)"
+           
     - name: config copy files
       run: |
         mkdir -p ~/.ssh
