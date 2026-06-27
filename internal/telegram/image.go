@@ -216,10 +216,14 @@ func destSuffix(c db.Cotizacion) string {
 	return " (" + c.MonedaDest + ")"
 }
 
-// GenerateUSDImage creates a PNG with USDT, Official and Referential quotes.
-func GenerateUSDImage(summary map[string]db.Cotizacion) (string, error) {
+// GenerateUSDImage creates a PNG with USDT, Official and optional Referential quotes.
+func GenerateUSDImage(summary map[string]db.Cotizacion, showReferencial bool) (string, error) {
 	const outPath = "/opt/osbo/cotiza/usdt.png"
-	b, err := newImageBuilder(1200, 1200)
+	h := 1200
+	if !showReferencial {
+		h = 900
+	}
+	b, err := newImageBuilder(1200, h)
 	if err != nil {
 		return "", err
 	}
@@ -230,7 +234,9 @@ func GenerateUSDImage(summary map[string]db.Cotizacion) (string, error) {
 	y := 100
 	y = b.drawQuoteRow(y, "USDT – BINANCE P2P"+destSuffix(summary["USDT"]), summary["USDT"], true)
 	y = b.drawQuoteRow(y, "USD OFICIAL – BCB"+destSuffix(summary["usd oficial"]), summary["usd oficial"], false)
-	y = b.drawQuoteRow(y, "USD REFERENCIAL – BCB"+destSuffix(summary["usd referencial"]), summary["usd referencial"], false)
+	if showReferencial {
+		y = b.drawQuoteRow(y, "USD REFERENCIAL – BCB"+destSuffix(summary["usd referencial"]), summary["usd referencial"], false)
+	}
 
 	b.drawFooter()
 	if err := b.saveTo(outPath); err != nil {

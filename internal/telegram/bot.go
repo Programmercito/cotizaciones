@@ -43,6 +43,13 @@ func fmtDest(dest string) string {
 	return fmt.Sprintf(" (%s)", dest)
 }
 
+// ShowReferencial returns true while the USD Referencial quote should still be
+// rendered in Telegram output. It becomes false at 2026-06-30 00:00:00 server local time.
+func ShowReferencial(now time.Time) bool {
+	cutoff := time.Date(2026, 6, 30, 0, 0, 0, 0, time.Local)
+	return now.Before(cutoff)
+}
+
 // Bot wraps the Telegram bot API bound to a specific chat.
 type Bot struct {
 	api    *tgbotapi.BotAPI
@@ -67,13 +74,12 @@ func New(token, chatID string) (*Bot, error) {
 // ── Message formatters ────────────────────────────────────────────────────────
 
 // FormatUSDMessage returns a clean daily-summary HTML message for USDT/USD.
-func FormatUSDMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatUSDMessage(summary map[string]db.Cotizacion, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
-	referencial := summary["usd referencial"]
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
-	text := strings.Join([]string{
+	lines := []string{
 		"<blockquote><b>☀️ Resumen USD / USDT</b></blockquote>",
 		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
 		"",
@@ -86,14 +92,20 @@ func FormatUSDMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inline
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
-		"",
-		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
-		"",
-		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
-	}, "\n")
+	}
+
+	if showReferencial {
+		referencial := summary["usd referencial"]
+		lines = append(lines, "",
+			"📊 <b>BCB - USD Referencial:</b>"+fmtDest(referencial.MonedaDest),
+			fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
+			fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
+			fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		)
+	}
+
+	lines = append(lines, "", fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt))
+	text := strings.Join(lines, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -105,10 +117,9 @@ func FormatUSDMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inline
 }
 
 // FormatSpikeUSDMessage returns a visually rich HTML alert for a USD/USDT price spike.
-func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp bool) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
 	oficial := summary["usd oficial"]
-	referencial := summary["usd referencial"]
 	pct := (math.Abs(diff) / umbral) * 100
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
@@ -125,7 +136,7 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float6
 		trend = "Caída rápida"
 	}
 
-	text := strings.Join([]string{
+	lines := []string{
 		title,
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
 		"🏛️ <b>Mercado:</b> Binance P2P",
@@ -139,17 +150,26 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float6
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
-		"",
-		"📊 <b>BCB - USD Referencial:</b>" + fmtDest(referencial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+	}
+
+	if showReferencial {
+		referencial := summary["usd referencial"]
+		lines = append(lines, "",
+			"📊 <b>BCB - USD Referencial:</b>"+fmtDest(referencial.MonedaDest),
+			fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
+			fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
+			fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
+		)
+	}
+
+	lines = append(lines,
 		"",
 		"────────────────────────",
 		fmt.Sprintf("📊 Variación USDT: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
 		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.2f</code>", umbral),
 		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
-	}, "\n")
+	)
+	text := strings.Join(lines, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
