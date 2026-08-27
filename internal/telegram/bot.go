@@ -120,6 +120,7 @@ func FormatUSDMessage(summary map[string]db.Cotizacion, showReferencial bool) (s
 func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSDT, umbralRef, diffRef float64, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
 	official := summary["usd oficial"]
+	officialMonedaDest := fmtDest(official.MonedaDest)
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
 
 	// Determine the dominant direction from the largest absolute change.
@@ -129,16 +130,14 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSD
 	}
 	isUp := mainDiff > 0
 
-	var title, dir, emoji, trend string
+	var title, emoji, trend string
 	if isUp {
 		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USD/USDT</b></blockquote>"
 		emoji = "📈"
-		dir = "+"
 		trend = "Subida rápida"
 	} else {
 		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USD/USDT</b></blockquote>"
 		emoji = "📉"
-		dir = "-"
 		trend = "Caída rápida"
 	}
 
@@ -166,10 +165,10 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSD
 		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", usdt.Purchase),
 		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
 		"",
-		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
+		"🏢 <b>BCB - USD Oficial:</b>" + officialMonedaDest,
+		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", official.Cotizacion),
+		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", official.Purchase),
+		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(official.Datetime)),
 	}
 
 	if showReferencial {

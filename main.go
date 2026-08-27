@@ -132,7 +132,7 @@ func main() {
 
 			hasUmbrales := !usdtUmbralNull && !refUmbralNull
 
-			var diffUSDT, diffRef, diff float64
+			var diffUSDT, diffRef float64
 			var isOutside bool
 			if hasUmbrales {
 				diffUSDT = data.Bid - currentUmbralUSDT
@@ -140,11 +140,6 @@ func main() {
 				outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
 				outsideRef := math.Abs(diffRef) > spikeThreshold
 				isOutside = outsideUSDT || outsideRef
-
-				diff = diffUSDT
-				if math.Abs(diffRef) > math.Abs(diffUSDT) {
-					diff = diffRef
-				}
 			}
 
 			hasMessageResto := cfg.MessageID.Valid && cfg.MessageID.String != ""
@@ -173,25 +168,25 @@ func main() {
 				return trySend(imagePathResto, msg, true, btn)
 			}
 
-		sendUSD := func() (int, error) {
-			msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-			return trySend(imagePathUSD, msg, true, btn)
-		}
+			sendUSD := func() (int, error) {
+				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
+				return trySend(imagePathUSD, msg, true, btn)
+			}
 
-		sendSpikeUSD := func() (int, error) {
-			msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
-			return trySend(imagePathUSD, msg, false, btn)
-		}
+			sendSpikeUSD := func() (int, error) {
+				msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
+				return trySend(imagePathUSD, msg, false, btn)
+			}
 
 			editResto := func(mid int) error {
 				msg, btn := telegram.FormatRestoMessage(summary)
 				return editMsg(imagePathResto, mid, msg, btn)
 			}
 
-		editUSD := func(mid int) error {
-			msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-			return editMsg(imagePathUSD, mid, msg, btn)
-		}
+			editUSD := func(mid int) error {
+				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
+				return editMsg(imagePathUSD, mid, msg, btn)
+			}
 
 			switch {
 			case !hasUmbrales:
