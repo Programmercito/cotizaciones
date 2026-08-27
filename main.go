@@ -179,7 +179,7 @@ func main() {
 		}
 
 		sendSpikeUSD := func() (int, error) {
-			msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diff, diff > 0, showReferencial)
+			msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
 			return trySend(imagePathUSD, msg, false, btn)
 		}
 

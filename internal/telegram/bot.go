@@ -117,29 +117,49 @@ func FormatUSDMessage(summary map[string]db.Cotizacion, showReferencial bool) (s
 }
 
 // FormatSpikeUSDMessage returns a visually rich HTML alert for a USD/USDT price spike.
-func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float64, isUp, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
+func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSDT, umbralRef, diffRef float64, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	usdt := summary["USDT"]
-	oficial := summary["usd oficial"]
-	pct := (math.Abs(diff) / umbral) * 100
+	official := summary["usd oficial"]
 	generatedAt := time.Now().Format(db.DisplayTimeFmt)
+
+	// Determine the dominant direction from the largest absolute change.
+	mainDiff := diffUSDT
+	if math.Abs(diffRef) > math.Abs(diffUSDT) {
+		mainDiff = diffRef
+	}
+	isUp := mainDiff > 0
 
 	var title, dir, emoji, trend string
 	if isUp {
-		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USDT</b></blockquote>"
+		title = "<blockquote><b>🚀 ¡SUBIDA DE PRECIO! | USD/USDT</b></blockquote>"
 		emoji = "📈"
 		dir = "+"
 		trend = "Subida rápida"
 	} else {
-		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USDT</b></blockquote>"
+		title = "<blockquote><b>🔻 ¡BAJADA DE PRECIO! | USD/USDT</b></blockquote>"
 		emoji = "📉"
 		dir = "-"
 		trend = "Caída rápida"
 	}
 
+	pct := func(diff, base float64) float64 {
+		if base == 0 {
+			return 0
+		}
+		return (math.Abs(diff) / base) * 100
+	}
+
+	sign := func(v float64) string {
+		if v < 0 {
+			return "-"
+		}
+		return "+"
+	}
+
 	lines := []string{
 		title,
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
-		"🏛️ <b>Mercado:</b> Binance P2P",
+		"🏛️ <b>Mercado:</b> Binance P2P / BCB",
 		"",
 		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
 		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", usdt.Cotizacion),
@@ -162,13 +182,22 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbral, diff float6
 		)
 	}
 
-	lines = append(lines,
+	variationLines := []string{
 		"",
 		"────────────────────────",
-		fmt.Sprintf("📊 Variación USDT: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", dir, math.Abs(diff), dir, pct),
-		fmt.Sprintf("🏷️ Ref. Anterior: <code>%.2f</code>", umbral),
-		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
-	)
+		fmt.Sprintf("📊 Variación USDT: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", sign(diffUSDT), math.Abs(diffUSDT), sign(diffUSDT), pct(diffUSDT, umbralUSDT)),
+		fmt.Sprintf("🏷️ Ref. Anterior USDT: <code>%.2f</code>", umbralUSDT),
+	}
+
+	if showReferencial {
+		variationLines = append(variationLines,
+			fmt.Sprintf("📊 Variación USD Referencial: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", sign(diffRef), math.Abs(diffRef), sign(diffRef), pct(diffRef, umbralRef)),
+			fmt.Sprintf("🏷️ Ref. Anterior USD Ref: <code>%.2f</code>", umbralRef),
+		)
+	}
+
+	variationLines = append(variationLines, fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt))
+	lines = append(lines, variationLines...)
 	text := strings.Join(lines, "\n")
 
 	btn := tgbotapi.NewInlineKeyboardMarkup(
