@@ -279,3 +279,78 @@ func (d *DB) GetLatestSummary() (map[string]Cotizacion, error) {
 
 	return summary, nil
 }
+
+// Baseline holds a previous-period reference value with presence semantics,
+// since the previous day may have no recorded quotes for a given moneda.
+type Baseline struct {
+	Value  float64
+	Exists bool
+}
+
+// USDBaselines holds previous-calendar-day reference values used to render
+// trend indicators for the USD Telegram image.
+type USDBaselines struct {
+	USDT       Baseline // average cotizacion for USDT during the previous calendar day
+	UsdOficial Baseline // last cotizacion for "usd oficial" during the previous calendar day
+}
+
+// previousDayRange returns the [start, end) bounds of the previous local
+// calendar day, formatted as TimeFmt for direct use in SQL comparisons.
+func previousDayRange() (start, end string) {
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+	return yesterdayStart.Format(timeFmt), todayStart.Format(timeFmt)
+}
+
+// GetPreviousDayLastByMoneda returns the last recorded cotizacion for the
+// given moneda during the previous calendar day, if any.
+func (d *DB) GetPreviousDayLastByMoneda(name string) (Baseline, error) {
+	start, end := previousDayRange()
+	var value float64
+	err := d.conn.QueryRow(
+		"SELECT cotizacion FROM cotizaciones WHERE moneda = ? AND datetime >= ? AND datetime < ? ORDER BY datetime DESC LIMIT 1",
+		name, start, end,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return Baseline{}, nil
+	}
+	if err != nil {
+		return Baseline{}, fmt.Errorf("error fetching previous day last for %s: %w", name, err)
+	}
+	return Baseline{Value: value, Exists: true}, nil
+}
+
+// GetPreviousDayAverageByMoneda returns the average recorded cotizacion for
+// the given moneda during the previous calendar day, if any records exist.
+func (d *DB) GetPreviousDayAverageByMoneda(name string) (Baseline, error) {
+	start, end := previousDayRange()
+	var avg sql.NullFloat64
+	var count int
+	err := d.conn.QueryRow(
+		"SELECT AVG(cotizacion), COUNT(*) FROM cotizaciones WHERE moneda = ? AND datetime >= ? AND datetime < ?",
+		name, start, end,
+	).Scan(&avg, &count)
+	if err != nil {
+		return Baseline{}, fmt.Errorf("error fetching previous day average for %s: %w", name, err)
+	}
+	if count == 0 || !avg.Valid {
+		return Baseline{}, nil
+	}
+	return Baseline{Value: avg.Float64, Exists: true}, nil
+}
+
+// GetUSDBaselines returns the previous-calendar-day baselines used for the
+// USD image trend indicators: the average for USDT and the last quote for
+// USD Oficial.
+func (d *DB) GetUSDBaselines() (USDBaselines, error) {
+	usdt, err := d.GetPreviousDayAverageByMoneda("USDT")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	oficial, err := d.GetPreviousDayLastByMoneda("usd oficial")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	return USDBaselines{USDT: usdt, UsdOficial: oficial}, nil
+}

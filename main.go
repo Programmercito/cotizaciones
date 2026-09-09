@@ -72,8 +72,13 @@ func main() {
 
 	showReferencial := telegram.ShowReferencial(time.Now())
 
+	baselines, baselineErr := database.GetUSDBaselines()
+	if baselineErr != nil {
+		ui.Warn(fmt.Sprintf("Error obteniendo referencias del día anterior: %v", baselineErr))
+	}
+
 	// Generate images for both messages
-	imagePathUSD, imageErrUSD := telegram.GenerateUSDImage(summary, showReferencial)
+	imagePathUSD, imageErrUSD := telegram.GenerateUSDImage(summary, showReferencial, baselines)
 	if imageErrUSD != nil {
 		ui.Warn(fmt.Sprintf("No se pudo generar la imagen USD: %v", imageErrUSD))
 	}
