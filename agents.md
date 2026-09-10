@@ -30,7 +30,7 @@ Compact reference for the `cotizaciones` Go app.
 4. Build summary from latest DB rows for: USDT, USD Oficial, USD Referencial, Euro, Oro, Plata, UFV.
 5. Generate **two** fixed PNG images in `/opt/osbo/cotiza/` (`usdt.png` and `resto.png`) with QR codes. Sent to Telegram if possible; falls back to text.
 6. Git: `ForcePull` frontend repo -> export JSON into it -> `CommitAndPush` with message `"data upload"`.
-7. Delete DB records older than **60 days** (`2 * 30 * 24h`).
+7. Delete DB records older than **90 days** (`3 * 30 * 24h`).
 
 ## Telegram logic (the easy-to-break part)
 

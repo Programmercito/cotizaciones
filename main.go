@@ -328,7 +328,7 @@ func main() {
 
 	// 7. Cleanup old cotizaciones (older than 60 days)
 	ui.StepStart(7, totalSteps-1, "🧹", "Limpiando registros antiguos (> 60 días)...")
-	deleted, err := database.DeleteOlderThan(2 * 30 * 24 * time.Hour)
+	deleted, err := database.DeleteOlderThan(3 * 30 * 24 * time.Hour)
 	if err != nil {
 		exitWithError("Error limpiando registros: %v", err)
 	}
