@@ -305,12 +305,13 @@ func previousDayRange() (start, end string) {
 
 // GetPreviousDayLastByMoneda returns the last recorded cotizacion for the
 // given moneda during the previous calendar day, if any.
+// Handles both full datetime ("2006-01-02 15:04:05") and date-only ("2006-01-02") formats.
 func (d *DB) GetPreviousDayLastByMoneda(name string) (Baseline, error) {
-	start, end := previousDayRange()
+	yesterdayDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	var value float64
 	err := d.conn.QueryRow(
-		"SELECT cotizacion FROM cotizaciones WHERE moneda = ? AND datetime >= ? AND datetime < ? ORDER BY datetime DESC LIMIT 1",
-		name, start, end,
+		"SELECT cotizacion FROM cotizaciones WHERE moneda = ? AND substr(datetime, 1, 10) = ? ORDER BY datetime DESC LIMIT 1",
+		name, yesterdayDate,
 	).Scan(&value)
 	if err == sql.ErrNoRows {
 		return Baseline{}, nil
@@ -323,13 +324,14 @@ func (d *DB) GetPreviousDayLastByMoneda(name string) (Baseline, error) {
 
 // GetPreviousDayAverageByMoneda returns the average recorded cotizacion for
 // the given moneda during the previous calendar day, if any records exist.
+// Handles both full datetime ("2006-01-02 15:04:05") and date-only ("2006-01-02") formats.
 func (d *DB) GetPreviousDayAverageByMoneda(name string) (Baseline, error) {
-	start, end := previousDayRange()
+	yesterdayDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	var avg sql.NullFloat64
 	var count int
 	err := d.conn.QueryRow(
-		"SELECT AVG(cotizacion), COUNT(*) FROM cotizaciones WHERE moneda = ? AND datetime >= ? AND datetime < ?",
-		name, start, end,
+		"SELECT AVG(cotizacion), COUNT(*) FROM cotizaciones WHERE moneda = ? AND substr(datetime, 1, 10) = ?",
+		name, yesterdayDate,
 	).Scan(&avg, &count)
 	if err != nil {
 		return Baseline{}, fmt.Errorf("error fetching previous day average for %s: %w", name, err)
