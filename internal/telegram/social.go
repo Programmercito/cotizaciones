@@ -3,6 +3,7 @@ package telegram
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -171,5 +172,5 @@ func socialTrendFor(key string, current float64, baselines db.USDBaselines) *soc
 	} else if diff < -0.005 {
 		direction = "down"
 	}
-	return &socialTrend{Direction: direction, Value: diff}
+	return &socialTrend{Direction: direction, Value: math.Round(diff*100) / 100}
 }
