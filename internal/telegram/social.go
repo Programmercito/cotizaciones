@@ -147,6 +147,16 @@ func socialTrendFor(key string, current float64, baselines db.USDBaselines) *soc
 		baseline = baselines.USDT
 	case "usd_oficial":
 		baseline = baselines.UsdOficial
+	case "usd_referencial":
+		baseline = baselines.UsdReferencial
+	case "euro":
+		baseline = baselines.Eur
+	case "oro":
+		baseline = baselines.Oro
+	case "plata":
+		baseline = baselines.Plata
+	case "ufv":
+		baseline = baselines.Ufv
 	default:
 		return nil
 	}

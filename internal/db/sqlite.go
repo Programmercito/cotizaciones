@@ -290,8 +290,13 @@ type Baseline struct {
 // USDBaselines holds previous-calendar-day reference values used to render
 // trend indicators for the USD Telegram image.
 type USDBaselines struct {
-	USDT       Baseline // average cotizacion for USDT during the previous calendar day
-	UsdOficial Baseline // last cotizacion for "usd oficial" during the previous calendar day
+	USDT           Baseline // average cotizacion for USDT during the previous calendar day
+	UsdOficial     Baseline // last cotizacion for "usd oficial" during the previous calendar day
+	UsdReferencial Baseline // last cotizacion for "usd referencial" during the previous calendar day
+	Eur            Baseline // last cotizacion for "eur" during the previous calendar day
+	Oro            Baseline // last cotizacion for "oro" during the previous calendar day
+	Plata          Baseline // last cotizacion for "plata" during the previous calendar day
+	Ufv            Baseline // last cotizacion for "ufv" during the previous calendar day
 }
 
 // previousDayRange returns the [start, end) bounds of the previous local
@@ -354,5 +359,33 @@ func (d *DB) GetUSDBaselines() (USDBaselines, error) {
 	if err != nil {
 		return USDBaselines{}, err
 	}
-	return USDBaselines{USDT: usdt, UsdOficial: oficial}, nil
+	referencial, err := d.GetPreviousDayLastByMoneda("usd referencial")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	eur, err := d.GetPreviousDayLastByMoneda("eur")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	oro, err := d.GetPreviousDayLastByMoneda("oro")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	plata, err := d.GetPreviousDayLastByMoneda("plata")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	ufv, err := d.GetPreviousDayLastByMoneda("ufv")
+	if err != nil {
+		return USDBaselines{}, err
+	}
+	return USDBaselines{
+		USDT:           usdt,
+		UsdOficial:     oficial,
+		UsdReferencial: referencial,
+		Eur:            eur,
+		Oro:            oro,
+		Plata:          plata,
+		Ufv:            ufv,
+	}, nil
 }
