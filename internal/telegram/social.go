@@ -100,7 +100,7 @@ func GenerateSocialDataAt(outPath string, summary map[string]db.Cotizacion, base
 		return "", fmt.Errorf("error creating social JSON directory: %w", err)
 	}
 
-	tempFile, err := os.CreateTemp(filepath.Dir(outPath), ".tiktok-*.json")
+	tempFile, err := os.CreateTemp(filepath.Dir(outPath), ".social-*.json")
 	if err != nil {
 		return "", fmt.Errorf("error creating temporary social JSON: %w", err)
 	}
