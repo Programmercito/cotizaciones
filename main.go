@@ -77,17 +77,6 @@ func main() {
 		ui.Warn(fmt.Sprintf("Error obteniendo referencias del día anterior: %v", baselineErr))
 	}
 
-	// Generate images for both messages
-	imagePathUSD, imageErrUSD := telegram.GenerateUSDImage(summary, showReferencial, baselines)
-	if imageErrUSD != nil {
-		ui.Warn(fmt.Sprintf("No se pudo generar la imagen USD: %v", imageErrUSD))
-	}
-
-	imagePathResto, imageErrResto := telegram.GenerateRestoImage(summary)
-	if imageErrResto != nil {
-		ui.Warn(fmt.Sprintf("No se pudo generar la imagen Resto: %v", imageErrResto))
-	}
-
 	socialDataPath, socialDataErr := telegram.GenerateSocialData(summary, baselines)
 	if socialDataErr != nil {
 		ui.Warn(fmt.Sprintf("No se pudo generar el JSON para redes: %v", socialDataErr))
@@ -177,27 +166,27 @@ func main() {
 
 			sendResto := func() (int, error) {
 				msg, btn := telegram.FormatRestoMessage(summary)
-				return trySend(imagePathResto, msg, true, btn)
+				return trySend("", msg, true, btn)
 			}
 
 			sendUSD := func() (int, error) {
 				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-				return trySend(imagePathUSD, msg, true, btn)
+				return trySend("", msg, true, btn)
 			}
 
 			sendSpikeUSD := func() (int, error) {
 				msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
-				return trySend(imagePathUSD, msg, false, btn)
+				return trySend("", msg, false, btn)
 			}
 
 			editResto := func(mid int) error {
 				msg, btn := telegram.FormatRestoMessage(summary)
-				return editMsg(imagePathResto, mid, msg, btn)
+				return editMsg("", mid, msg, btn)
 			}
 
 			editUSD := func(mid int) error {
 				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-				return editMsg(imagePathUSD, mid, msg, btn)
+				return editMsg("", mid, msg, btn)
 			}
 
 			switch {
