@@ -88,6 +88,13 @@ func main() {
 		ui.Warn(fmt.Sprintf("No se pudo generar la imagen Resto: %v", imageErrResto))
 	}
 
+	socialDataPath, socialDataErr := telegram.GenerateSocialData(summary, baselines)
+	if socialDataErr != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar el JSON para redes: %v", socialDataErr))
+	} else {
+		ui.Success(fmt.Sprintf("JSON para redes generado → %s", socialDataPath))
+	}
+
 	cfg, err := database.GetConfig()
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
