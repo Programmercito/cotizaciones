@@ -84,6 +84,22 @@ func main() {
 		ui.Success(fmt.Sprintf("JSON para redes generado → %s", socialDataPath))
 	}
 
+	usdImagePath := ""
+	if path, imageErr := telegram.GenerateUSDImage(summary, showReferencial, baselines); imageErr != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar la imagen USD: %v", imageErr))
+	} else {
+		usdImagePath = path
+		ui.Success(fmt.Sprintf("Imagen USD generada → %s", path))
+	}
+
+	restoImagePath := ""
+	if path, imageErr := telegram.GenerateRestoImage(summary); imageErr != nil {
+		ui.Warn(fmt.Sprintf("No se pudo generar la imagen Resto: %v", imageErr))
+	} else {
+		restoImagePath = path
+		ui.Success(fmt.Sprintf("Imagen Resto generada → %s", path))
+	}
+
 	cfg, err := database.GetConfig()
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
@@ -166,27 +182,27 @@ func main() {
 
 			sendResto := func() (int, error) {
 				msg, btn := telegram.FormatRestoMessage(summary)
-				return trySend("", msg, true, btn)
+				return trySend(restoImagePath, msg, true, btn)
 			}
 
 			sendUSD := func() (int, error) {
 				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-				return trySend("", msg, true, btn)
+				return trySend(usdImagePath, msg, true, btn)
 			}
 
 			sendSpikeUSD := func() (int, error) {
 				msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
-				return trySend("", msg, false, btn)
+				return trySend(usdImagePath, msg, false, btn)
 			}
 
 			editResto := func(mid int) error {
 				msg, btn := telegram.FormatRestoMessage(summary)
-				return editMsg("", mid, msg, btn)
+				return editMsg(restoImagePath, mid, msg, btn)
 			}
 
 			editUSD := func(mid int) error {
 				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
-				return editMsg("", mid, msg, btn)
+				return editMsg(usdImagePath, mid, msg, btn)
 			}
 
 			switch {

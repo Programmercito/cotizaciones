@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 	"image/png"
 	"math"
 	"os"
@@ -293,6 +294,9 @@ func (b *imageBuilder) saveTo(path string) error {
 		return err
 	}
 	defer f.Close()
+	if strings.EqualFold(filepath.Ext(path), ".jpg") || strings.EqualFold(filepath.Ext(path), ".jpeg") {
+		return jpeg.Encode(f, b.img, &jpeg.Options{Quality: 95})
+	}
 	return png.Encode(f, b.img)
 }
 
@@ -318,10 +322,10 @@ func destSuffix(c db.Cotizacion) string {
 	return " (" + c.MonedaDest + ")"
 }
 
-// GenerateUSDImage creates the production PNG with USDT, Official and optional
+// GenerateUSDImage creates the production JPG with USDT, Official and optional
 // Referential quotes.
 func GenerateUSDImage(summary map[string]db.Cotizacion, showReferencial bool, baselines db.USDBaselines) (string, error) {
-	return GenerateUSDImageAt("/opt/osbo/cotiza/usdt.png", summary, showReferencial, baselines)
+	return GenerateUSDImageAt("/opt/osbo/cotiza/usdt.jpg", summary, showReferencial, baselines)
 }
 
 // GenerateUSDImageAt creates a USD image at outPath. It is useful for local
@@ -367,9 +371,9 @@ func GenerateUSDImageAt(outPath string, summary map[string]db.Cotizacion, showRe
 	return outPath, nil
 }
 
-// GenerateRestoImage creates a PNG with Euro, Oro, Plata and UFV quotes.
+// GenerateRestoImage creates a JPG with Euro, Oro, Plata and UFV quotes.
 func GenerateRestoImage(summary map[string]db.Cotizacion) (string, error) {
-	const outPath = "/opt/osbo/cotiza/resto.png"
+	const outPath = "/opt/osbo/cotiza/resto.jpg"
 	b, err := newImageBuilder(1200, 1500)
 	if err != nil {
 		return "", err
