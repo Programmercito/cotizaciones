@@ -115,11 +115,17 @@ func main() {
 			// Generic helpers
 			trySend := func(imgPath, text string, silent bool, btn tgbotapi.InlineKeyboardMarkup) (int, error) {
 				if imgPath != "" {
-					id, e := bot.SendPhoto(imgPath, text, silent, btn)
-					if e == nil {
-						return id, nil
+					if info, statErr := os.Stat(imgPath); statErr != nil {
+						ui.Warn(fmt.Sprintf("No se puede leer la imagen %q: %v", imgPath, statErr))
+					} else if info.Size() == 0 {
+						ui.Warn(fmt.Sprintf("La imagen %q está vacía", imgPath))
+					} else {
+						id, e := bot.SendPhoto(imgPath, text, silent, btn)
+						if e == nil {
+							return id, nil
+						}
+						ui.Warn(fmt.Sprintf("Telegram rechazó la foto %q (%v), enviando texto...", imgPath, e))
 					}
-					ui.Warn(fmt.Sprintf("Foto falló (%v), enviando texto...", e))
 				}
 				return bot.SendMessage(text, silent, btn)
 			}
