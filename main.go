@@ -139,10 +139,17 @@ func main() {
 						if e == nil {
 							return id, nil
 						}
+						if telegram.IsChatGone(e) {
+							exitWithError("El bot ya no puede escribir en el chat (%v) — revisá chatid/miembros. Saliendo con error para que el CronJob registre el fallo.", e)
+						}
 						ui.Warn(fmt.Sprintf("Telegram rechazó la foto %q (%v), enviando texto...", imgPath, e))
 					}
 				}
-				return bot.SendMessage(text, silent, btn)
+				id, e := bot.SendMessage(text, silent, btn)
+				if e != nil && telegram.IsChatGone(e) {
+					exitWithError("El bot ya no puede escribir en el chat (%v) — revisá chatid/miembros. Saliendo con error para que el CronJob registre el fallo.", e)
+				}
+				return id, e
 			}
 
 			// editMsg edits an existing message without knowing its type
@@ -155,24 +162,34 @@ func main() {
 			// inside the bot methods; only a real failure here sends a new msg.
 			editMsg := func(imgPath string, mid int, text string, btn tgbotapi.InlineKeyboardMarkup) error {
 				var errs []string
+				var lastErr error
 				if imgPath != "" {
 					if err := bot.EditPhoto(mid, imgPath, text, btn); err == nil {
 						return nil
 					} else {
 						errs = append(errs, fmt.Sprintf("photo: %v", err))
+						lastErr = err
+						if telegram.IsChatGone(err) {
+							exitWithError("El bot ya no puede escribir en el chat (%v) — revisá chatid/miembros. Saliendo con error para que el CronJob registre el fallo.", err)
+						}
 					}
 				}
 				if err := bot.EditMessage(mid, text, btn); err == nil {
 					return nil
 				} else {
 					errs = append(errs, fmt.Sprintf("text: %v", err))
+					lastErr = err
+					if telegram.IsChatGone(err) {
+						exitWithError("El bot ya no puede escribir en el chat (%v) — revisá chatid/miembros. Saliendo con error para que el CronJob registre el fallo.", err)
+					}
 				}
 				if err := bot.EditCaption(mid, text, btn); err == nil {
 					return nil
 				} else {
 					errs = append(errs, fmt.Sprintf("caption: %v", err))
+					lastErr = err
 				}
-				return fmt.Errorf("todas las ediciones fallaron (msgID=%d) — %s", mid, strings.Join(errs, " | "))
+				return fmt.Errorf("todas las ediciones fallaron (msgID=%d) — %s: %w", mid, strings.Join(errs, " | "), lastErr)
 			}
 
 			// Threshold calculations must happen before any message is sent,
@@ -206,8 +223,11 @@ func main() {
 				isOutside = outsideUSDT || outsideRef
 			}
 
-			hasMessageResto := cfg.MessageID.Valid && cfg.MessageID.String != ""
-			hasMessageUSD := cfg.MessageIDUSD.Valid && cfg.MessageIDUSD.String != ""
+			// A stored messageID must parse to a positive Telegram ID; anything
+			// else is treated as absent so the run sends a fresh message and
+			// heals the DB, instead of failing every edit forever with id=0.
+			restoMid, hasMessageResto := parseMessageID(cfg.MessageID.String)
+			usdMid, hasMessageUSD := parseMessageID(cfg.MessageIDUSD.String)
 
 			saveMessageIDResto := func(msgID string) {
 				if err := database.UpdateConfigMessageID(today, msgID); err != nil {
@@ -258,9 +278,8 @@ func main() {
 				saveConfigUSD(cfg.MessageIDUSD.String)
 
 				if hasMessageResto {
-					mid, _ := strconv.Atoi(cfg.MessageID.String)
-					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
-					if editErr := editResto(mid); editErr != nil {
+					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", restoMid))
+					if editErr := editResto(restoMid); editErr != nil {
 						ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
 						newID, e := sendResto()
 						if e != nil {
@@ -271,7 +290,7 @@ func main() {
 						}
 					} else {
 						ui.Success("Mensaje Resto actualizado correctamente")
-						saveMessageIDResto(strconv.Itoa(mid))
+						saveMessageIDResto(strconv.Itoa(restoMid))
 					}
 				} else {
 					ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
@@ -307,9 +326,8 @@ func main() {
 			default:
 				// No spike: update existing messages when possible.
 				if hasMessageResto {
-					mid, _ := strconv.Atoi(cfg.MessageID.String)
-					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", mid))
-					if editErr := editResto(mid); editErr != nil {
+					ui.Info(fmt.Sprintf("Actualizando mensaje Resto existente (id=%d)...", restoMid))
+					if editErr := editResto(restoMid); editErr != nil {
 						ui.Warn(fmt.Sprintf("No se pudo editar Resto (%v) — enviando nuevo...", editErr))
 						newID, e := sendResto()
 						if e != nil {
@@ -320,7 +338,7 @@ func main() {
 						}
 					} else {
 						ui.Success("Mensaje Resto actualizado correctamente")
-						saveMessageIDResto(strconv.Itoa(mid))
+						saveMessageIDResto(strconv.Itoa(restoMid))
 					}
 				} else {
 					ui.Info("Sin messageID — enviando mensaje Resto nuevo...")
@@ -334,9 +352,8 @@ func main() {
 				}
 
 				if hasMessageUSD {
-					mid, _ := strconv.Atoi(cfg.MessageIDUSD.String)
-					ui.Info(fmt.Sprintf("Actualizando mensaje USD existente (id=%d)...", mid))
-					if editErr := editUSD(mid); editErr != nil {
+					ui.Info(fmt.Sprintf("Actualizando mensaje USD existente (id=%d)...", usdMid))
+					if editErr := editUSD(usdMid); editErr != nil {
 						ui.Warn(fmt.Sprintf("No se pudo editar USD (%v) — enviando nuevo...", editErr))
 						newID, e := sendUSD()
 						if e != nil {
@@ -347,7 +364,7 @@ func main() {
 						}
 					} else {
 						ui.Success("Mensaje USD actualizado correctamente")
-						saveMessageIDUSD(strconv.Itoa(mid))
+						saveMessageIDUSD(strconv.Itoa(usdMid))
 					}
 				} else {
 					ui.Info("Sin messageIDUSD — enviando mensaje USD nuevo...")
@@ -404,4 +421,14 @@ func main() {
 func exitWithError(format string, args ...any) {
 	ui.Fatal(fmt.Sprintf(format, args...))
 	os.Exit(1)
+}
+
+// parseMessageID validates a stored Telegram message ID: it must be a
+// positive integer. Returns (0,false) for empty/garbage/non-positive values.
+func parseMessageID(s string) (int, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }

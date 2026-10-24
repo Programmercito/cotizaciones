@@ -34,16 +34,25 @@ Compact reference for the `cotizaciones` Go app.
 
 ## Telegram logic (the easy-to-break part)
 
-Robustness rules (since 2026-10): every API call retries transient failures
-(network/429/5xx) up to 3 attempts; `message is not modified` counts as
-SUCCESS (never triggers a new message); edits fall back through a chain
+Robustness rules (since 2026-10): the bot HTTP client has explicit timeouts
+(30s request, 10s dial) so a hung connection can't freeze a cron slot; edits
+retry transient failures (network/429/5xx) up to 3 attempts, NEW SENDS retry
+only on 429 (a network timeout may already have delivered the message —
+retrying would duplicate it); `message is not modified` counts as SUCCESS
+(never triggers a new message); edits fall back through a chain
 (EditPhoto -> EditMessage -> EditCaption) because the stored messageID may
 point to a photo or a text message; only if ALL edits fail is a new message
-sent. Images are written atomically (temp + rename) and overlapping runs are
-blocked by a flock at `/opt/osbo/cotizaciones.lock` (skip = exit quietly).
-Spike detection ignores USD Referencial when `showReferencial` is false or
-the row is missing (retired 2026-06-30; a stale/0 value used to fake spikes).
-If `GetLatestSummary` fails, Telegram is skipped entirely.
+sent. "chat not found"/"bot is not a member" exits non-zero so the CronJob
+records the failure. DB-sourced strings (MonedaDest, raw datetimes) are
+HTML-escaped; photo captions are clamped to 1024 visible chars and texts to
+4096 before sending. Stored messageIDs must parse as positive ints or are
+treated as absent (self-heals). Images are written atomically (temp + rename)
+and overlapping runs are blocked by a flock at `/opt/osbo/cotizaciones.lock`
+(skip = exit quietly). Spike detection ignores USD Referencial when
+`showReferencial` is false or the row is missing (retired 2026-06-30; a
+stale/0 value used to fake spikes). If `GetLatestSummary` fails, Telegram is
+skipped entirely. Config queries use `ORDER BY rowid` for read/write
+determinism.
 
 Two independent messages are sent/edited:
 

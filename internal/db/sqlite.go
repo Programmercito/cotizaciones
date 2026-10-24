@@ -149,7 +149,7 @@ func (d *DB) ExportCotizacionesToJSON(outputPath string) error {
 // GetConfig retrieves the single config record
 func (d *DB) GetConfig() (*Config, error) {
 	var cfg Config
-	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, messageidusd, umbral, umbral_referencial FROM config LIMIT 1").
+	err := d.conn.QueryRow("SELECT currentdate, chatid, messageid, messageidusd, umbral, umbral_referencial FROM config ORDER BY rowid LIMIT 1").
 		Scan(&cfg.CurrentDate, &cfg.ChatID, &cfg.MessageID, &cfg.MessageIDUSD, &cfg.Umbral, &cfg.UmbralReferencial)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config: %w", err)
@@ -164,7 +164,7 @@ func (d *DB) UpdateConfig(currentDate, messageID string, umbralUSDT, umbralRef f
 		mID = nil
 	}
 	res, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageid = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		"UPDATE config SET currentdate = ?, messageid = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config ORDER BY rowid LIMIT 1)",
 		currentDate, mID, umbralUSDT, umbralRef,
 	)
 	if err != nil {
@@ -184,7 +184,7 @@ func (d *DB) UpdateConfigMessageID(currentDate, messageID string) error {
 		mID = nil
 	}
 	res, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageid = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		"UPDATE config SET currentdate = ?, messageid = ? WHERE rowid = (SELECT rowid FROM config ORDER BY rowid LIMIT 1)",
 		currentDate, mID,
 	)
 	if err != nil {
@@ -204,7 +204,7 @@ func (d *DB) UpdateConfigUSD(currentDate, messageIDUSD string, umbralUSDT, umbra
 		mID = nil
 	}
 	res, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageidusd = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		"UPDATE config SET currentdate = ?, messageidusd = ?, umbral = ?, umbral_referencial = ? WHERE rowid = (SELECT rowid FROM config ORDER BY rowid LIMIT 1)",
 		currentDate, mID, umbralUSDT, umbralRef,
 	)
 	if err != nil {
@@ -224,7 +224,7 @@ func (d *DB) UpdateConfigMessageIDUSD(currentDate, messageIDUSD string) error {
 		mID = nil
 	}
 	res, err := d.conn.Exec(
-		"UPDATE config SET currentdate = ?, messageidusd = ? WHERE rowid = (SELECT rowid FROM config LIMIT 1)",
+		"UPDATE config SET currentdate = ?, messageidusd = ? WHERE rowid = (SELECT rowid FROM config ORDER BY rowid LIMIT 1)",
 		currentDate, mID,
 	)
 	if err != nil {
