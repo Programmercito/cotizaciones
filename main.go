@@ -248,27 +248,27 @@ func main() {
 			}
 
 			sendResto := func() (int, error) {
-				msg, btn := telegram.FormatRestoMessage(summary)
+				msg, btn := telegram.FormatRestoMessage(summary, baselines)
 				return trySend(restoImagePath, msg, true, btn)
 			}
 
 			sendUSD := func() (int, error) {
-				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
+				msg, btn := telegram.FormatUSDMessage(summary, showReferencial, baselines)
 				return trySend(usdImagePath, msg, true, btn)
 			}
 
 			sendSpikeUSD := func() (int, error) {
-				msg, btn := telegram.FormatSpikeUSDMessage(summary, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
+				msg, btn := telegram.FormatSpikeUSDMessage(summary, baselines, currentUmbralUSDT, diffUSDT, currentUmbralRef, diffRef, showReferencial)
 				return trySend(usdImagePath, msg, false, btn)
 			}
 
 			editResto := func(mid int) error {
-				msg, btn := telegram.FormatRestoMessage(summary)
+				msg, btn := telegram.FormatRestoMessage(summary, baselines)
 				return editMsg(restoImagePath, mid, msg, btn)
 			}
 
 			editUSD := func(mid int) error {
-				msg, btn := telegram.FormatUSDMessage(summary, showReferencial)
+				msg, btn := telegram.FormatUSDMessage(summary, showReferencial, baselines)
 				return editMsg(usdImagePath, mid, msg, btn)
 			}
 

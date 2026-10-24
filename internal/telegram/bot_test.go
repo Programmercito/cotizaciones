@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"cotizaciones/internal/db"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -129,5 +131,64 @@ func TestFmtDestEscapesHTML(t *testing.T) {
 	}
 	if fmtDest("") != "" {
 		t.Error("empty dest must render empty")
+	}
+}
+
+func TestQuoteRowOmitsCompraAndTrendWhenAbsent(t *testing.T) {
+	c := db.Cotizacion{Cotizacion: 6.98, Purchase: 0, Datetime: "2026-10-24 14:32:05"}
+	joined := strings.Join(quoteRow("💰", "USDT · Binance P2P", "Venta", c, db.Baseline{}), "\n")
+
+	if strings.Contains(joined, "Compra") {
+		t.Error("must hide Compra 0.00 noise for quotes without purchase data")
+	}
+	if strings.Contains(joined, "vs ayer") {
+		t.Error("must hide trend when no baseline exists")
+	}
+	if !strings.Contains(joined, "14:32") || !strings.Contains(joined, "6.98") {
+		t.Errorf("row content wrong: %q", joined)
+	}
+}
+
+func TestQuoteRowShowsCompraAndTrend(t *testing.T) {
+	c := db.Cotizacion{Cotizacion: 6.98, Purchase: 7.02, Datetime: "2026-10-24 14:32:05"}
+	base := db.Baseline{Value: 6.91, Exists: true}
+	joined := strings.Join(quoteRow("💰", "USDT · Binance P2P", "Venta", c, base), "\n")
+
+	if !strings.Contains(joined, "Compra <code>7.02</code>") {
+		t.Error("missing compra when purchase > 0")
+	}
+	if !strings.Contains(joined, "▲") || !strings.Contains(joined, "+0.07") || !strings.Contains(joined, "1.0%") {
+		t.Errorf("expected up-trend with diff and pct, got %q", joined)
+	}
+	if !strings.Contains(joined, "vs ayer") {
+		t.Error("trend must be labelled vs ayer")
+	}
+}
+
+func TestTrendTextEqualAvoidsZeroNoise(t *testing.T) {
+	tr := buildTrend(7.0, db.Baseline{Value: 7.0, Exists: true})
+	got := trendText(tr, 7.0)
+	if !strings.Contains(got, "sin cambio") {
+		t.Errorf("equal trend = %q, want 'sin cambio'", got)
+	}
+	if strings.Contains(got, "+0.00") {
+		t.Errorf("equal trend shows misleading +0.00: %q", got)
+	}
+}
+
+func TestTrendTextDown(t *testing.T) {
+	tr := buildTrend(6.80, db.Baseline{Value: 7.00, Exists: true})
+	got := trendText(tr, 7.00)
+	if !strings.Contains(got, "▼") || !strings.Contains(got, "-0.20") || !strings.Contains(got, "2.9%") {
+		t.Errorf("down trend = %q", got)
+	}
+}
+
+func TestShortTimeDateOnly(t *testing.T) {
+	if got := shortTime("2026-01-02"); got != "02/01" {
+		t.Errorf("date-only = %q, want 02/01", got)
+	}
+	if got := shortTime("basura"); got != "" {
+		t.Errorf("garbage must render empty, got %q", got)
 	}
 }

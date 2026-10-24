@@ -19,28 +19,44 @@ import (
 
 const siteURL = "https://cotizaciones.devcito.org/"
 
-// fmtDT convierte un datetime de la DB al formato legible para Telegram.
-// El valor de salida se usa dentro de HTML: si no se puede parsear se
-// escapa el crudo para que un dato exotico no rompa el ParseMode.
-func fmtDT(dt string) string {
-	layouts := []string{
-		db.TimeFmt,
-		"2006-01-02 15:04",
-		"2006-01-02",
-	}
-
-	for _, layout := range layouts {
-		t, err := time.Parse(layout, dt)
-		if err != nil {
-			continue
+// shortTime convierte un datetime de la DB a HH:MM para las filas del
+// mensaje. Los datetimes date-only (algunas monedas se insertan así) se
+// muestran como fecha corta; los irreconocibles devuelven "" y la fila
+// omite el timestamp — nunca se filtra texto crudo al HTML.
+func shortTime(dt string) string {
+	for _, layout := range []string{db.TimeFmt, "2006-01-02 15:04"} {
+		if t, err := time.Parse(layout, dt); err == nil {
+			return t.Format("15:04")
 		}
-		if layout == db.TimeFmt || layout == "2006-01-02 15:04" {
-			return t.Format(db.DisplayTimeFmt)
-		}
-		return t.Format(db.DisplayDateFmt)
 	}
+	if t, err := time.Parse("2006-01-02", dt); err == nil {
+		return t.Format("02/01")
+	}
+	return ""
+}
 
-	return html.EscapeString(dt)
+func signOf(v float64) string {
+	if v < 0 {
+		return "-"
+	}
+	return "+"
+}
+
+// trendText renders the previous-day comparison used by the text messages.
+// The equal case avoids the misleading "▲ +0.00 (+0.0%)".
+func trendText(tr trendInfo, base float64) string {
+	if tr.equal {
+		return "<code>● sin cambio</code> <i>vs ayer</i>"
+	}
+	arrow := "▼"
+	if tr.up {
+		arrow = "▲"
+	}
+	txt := fmt.Sprintf("%s %s%.2f", arrow, signOf(tr.diff), math.Abs(tr.diff))
+	if base > 0 {
+		txt += fmt.Sprintf(" (%s%.1f%%)", signOf(tr.diff), math.Abs(tr.diff)/base*100)
+	}
+	return fmt.Sprintf("<code>%s</code> <i>vs ayer</i>", txt)
 }
 
 // fmtDest returns a formatted moneda destino tag, or empty if blank.
@@ -94,56 +110,62 @@ func New(token, chatID string) (*Bot, error) {
 
 // ── Message formatters ────────────────────────────────────────────────────────
 
-// FormatUSDMessage returns a clean daily-summary HTML message for USDT/USD.
-func FormatUSDMessage(summary map[string]db.Cotizacion, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
-	usdt := summary["USDT"]
-	oficial := summary["usd oficial"]
-	generatedAt := time.Now().Format(db.DisplayTimeFmt)
-
-	lines := []string{
-		"<blockquote><b>☀️ Resumen USD / USDT</b></blockquote>",
-		"🏛️ <b>Mercados:</b> Binance P2P / BCB",
-		"",
-		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", usdt.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", usdt.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
-		"",
-		"🏢 <b>BCB - USD Oficial:</b>" + fmtDest(oficial.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", oficial.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", oficial.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oficial.Datetime)),
+// quoteRow renders a compact block for one currency:
+//
+//	💰 USDT · Binance P2P (Bs) · 14:32
+//	Venta 6.98 · Compra 7.02
+//	▲ +0.07 (+1.0%) vs ayer
+//
+// Compra disappears when the quote tracks no purchase (only USDT does) and
+// the trend line disappears without a previous-day baseline, so the message
+// never shows "0.00" noise or fake deltas.
+func quoteRow(emoji, title, priceLabel string, c db.Cotizacion, base db.Baseline) []string {
+	head := emoji + " <b>" + title + "</b>" + fmtDest(c.MonedaDest)
+	if t := shortTime(c.Datetime); t != "" {
+		head += " · <i>" + t + "</i>"
 	}
-
-	if showReferencial {
-		referencial := summary["usd referencial"]
-		lines = append(lines, "",
-			"📊 <b>BCB - USD Referencial:</b>"+fmtDest(referencial.MonedaDest),
-			fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
-			fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-			fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
-		)
+	price := priceLabel + " <code>" + fmt.Sprintf("%.2f", c.Cotizacion) + "</code>"
+	if c.Purchase > 0 {
+		price += " · Compra <code>" + fmt.Sprintf("%.2f", c.Purchase) + "</code>"
 	}
+	if tr := buildTrend(c.Cotizacion, base); tr.exists {
+		price += "\n" + trendText(tr, base.Value)
+	}
+	return []string{head, price}
+}
 
-	lines = append(lines, "", fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt))
-	text := strings.Join(lines, "\n")
-
-	btn := tgbotapi.NewInlineKeyboardMarkup(
+func webButton() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
 		),
 	)
-
-	return text, btn
 }
 
-// FormatSpikeUSDMessage returns a visually rich HTML alert for a USD/USDT price spike.
-func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSDT, umbralRef, diffRef float64, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
-	usdt := summary["USDT"]
-	official := summary["usd oficial"]
-	officialMonedaDest := fmtDest(official.MonedaDest)
-	generatedAt := time.Now().Format(db.DisplayTimeFmt)
+func updatedFooter() string {
+	return fmt.Sprintf("🔄 <i>Actualizado: %s</i>", time.Now().Format("02/01 · 15:04"))
+}
 
+// FormatUSDMessage returns the compact USD/USDT summary for Telegram.
+func FormatUSDMessage(summary map[string]db.Cotizacion, showReferencial bool, baselines db.USDBaselines) (string, tgbotapi.InlineKeyboardMarkup) {
+	lines := []string{"<blockquote><b>☀️ USD / USDT</b></blockquote>", ""}
+	lines = append(lines, quoteRow("💰", "USDT · Binance P2P", "Venta", summary["USDT"], baselines.USDT)...)
+	lines = append(lines, "")
+	lines = append(lines, quoteRow("🏢", "USD Oficial · BCB", "Venta", summary["usd oficial"], baselines.UsdOficial)...)
+	if showReferencial {
+		lines = append(lines, "")
+		lines = append(lines, quoteRow("📊", "USD Referencial · BCB", "Venta", summary["usd referencial"], baselines.UsdReferencial)...)
+	}
+	lines = append(lines, "", updatedFooter())
+
+	return strings.Join(lines, "\n"), webButton()
+}
+
+// FormatSpikeUSDMessage returns a visually rich HTML alert for a USD/USDT
+// price spike. The alert body shows the spike variation against the previous
+// threshold ("vs umbral"), while each quote row additionally carries its
+// daily trend ("vs ayer") exactly like the summary messages.
+func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, baselines db.USDBaselines, umbralUSDT, diffUSDT, umbralRef, diffRef float64, showReferencial bool) (string, tgbotapi.InlineKeyboardMarkup) {
 	// Determine the dominant direction from the largest absolute change.
 	mainDiff := diffUSDT
 	if math.Abs(diffRef) > math.Abs(diffUSDT) {
@@ -169,105 +191,53 @@ func FormatSpikeUSDMessage(summary map[string]db.Cotizacion, umbralUSDT, diffUSD
 		return (math.Abs(diff) / base) * 100
 	}
 
-	sign := func(v float64) string {
-		if v < 0 {
-			return "-"
-		}
-		return "+"
-	}
-
 	lines := []string{
 		title,
 		fmt.Sprintf("%s <b>Tendencia:</b> %s", emoji, trend),
-		"🏛️ <b>Mercado:</b> Binance P2P / BCB",
 		"",
-		"💰 <b>USDT (Binance):</b>" + fmtDest(usdt.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", usdt.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", usdt.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(usdt.Datetime)),
-		"",
-		"🏢 <b>BCB - USD Oficial:</b>" + officialMonedaDest,
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", official.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", official.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(official.Datetime)),
 	}
-
+	lines = append(lines, quoteRow("💰", "USDT · Binance P2P", "Venta", summary["USDT"], baselines.USDT)...)
+	lines = append(lines, "")
+	lines = append(lines, quoteRow("🏢", "USD Oficial · BCB", "Venta", summary["usd oficial"], baselines.UsdOficial)...)
 	if showReferencial {
-		referencial := summary["usd referencial"]
-		lines = append(lines, "",
-			"📊 <b>BCB - USD Referencial:</b>"+fmtDest(referencial.MonedaDest),
-			fmt.Sprintf("💵 Venta:  <code>%.2f</code>", referencial.Cotizacion),
-			fmt.Sprintf("🛒 Compra: <code>%.2f</code>", referencial.Purchase),
-			fmt.Sprintf("🕒 <i>%s</i>", fmtDT(referencial.Datetime)),
-		)
+		lines = append(lines, "")
+		lines = append(lines, quoteRow("📊", "USD Referencial · BCB", "Venta", summary["usd referencial"], baselines.UsdReferencial)...)
 	}
 
 	variationLines := []string{
 		"",
 		"────────────────────────",
-		fmt.Sprintf("📊 Variación USDT: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", sign(diffUSDT), math.Abs(diffUSDT), sign(diffUSDT), pct(diffUSDT, umbralUSDT)),
-		fmt.Sprintf("🏷️ Ref. Anterior USDT: <code>%.2f</code>", umbralUSDT),
+		fmt.Sprintf("📊 Variación USDT vs umbral: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", signOf(diffUSDT), math.Abs(diffUSDT), signOf(diffUSDT), pct(diffUSDT, umbralUSDT)),
+		fmt.Sprintf("🏷️ Umbral anterior USDT: <code>%.2f</code>", umbralUSDT),
 	}
 
 	if showReferencial {
 		variationLines = append(variationLines,
-			fmt.Sprintf("📊 Variación USD Referencial: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", sign(diffRef), math.Abs(diffRef), sign(diffRef), pct(diffRef, umbralRef)),
-			fmt.Sprintf("🏷️ Ref. Anterior USD Ref: <code>%.2f</code>", umbralRef),
+			fmt.Sprintf("📊 Variación USD Ref vs umbral: <code>%s%.2f</code> (<code>%s%.2f%%</code>)", signOf(diffRef), math.Abs(diffRef), signOf(diffRef), pct(diffRef, umbralRef)),
+			fmt.Sprintf("🏷️ Umbral anterior USD Ref: <code>%.2f</code>", umbralRef),
 		)
 	}
 
-	variationLines = append(variationLines, fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt))
+	variationLines = append(variationLines, updatedFooter())
 	lines = append(lines, variationLines...)
-	text := strings.Join(lines, "\n")
 
-	btn := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
-		),
-	)
-
-	return text, btn
+	return strings.Join(lines, "\n"), webButton()
 }
 
-// FormatRestoMessage returns a clean daily-summary HTML message for Euro/Oro/Plata/UFV.
-func FormatRestoMessage(summary map[string]db.Cotizacion) (string, tgbotapi.InlineKeyboardMarkup) {
-	euro := summary["eur"]
-	oro := summary["oro"]
-	plata := summary["plata"]
-	ufv := summary["ufv"]
-	generatedAt := time.Now().Format(db.DisplayTimeFmt)
+// FormatRestoMessage returns the compact Euro/Oro/Plata/UFV summary with
+// daily trends, sharing the quoteRow renderer with the USD message.
+func FormatRestoMessage(summary map[string]db.Cotizacion, baselines db.USDBaselines) (string, tgbotapi.InlineKeyboardMarkup) {
+	lines := []string{"<blockquote><b>☀️ Cotizaciones</b></blockquote>", ""}
+	lines = append(lines, quoteRow("🇪🇺", "Euro · BCB", "Venta", summary["eur"], baselines.Eur)...)
+	lines = append(lines, "")
+	lines = append(lines, quoteRow("🥇", "Oro (Troy Oz) · BCB", "Precio", summary["oro"], baselines.Oro)...)
+	lines = append(lines, "")
+	lines = append(lines, quoteRow("🥈", "Plata (Troy Oz) · BCB", "Precio", summary["plata"], baselines.Plata)...)
+	lines = append(lines, "")
+	lines = append(lines, quoteRow("📐", "UFV · BCB", "Valor", summary["ufv"], baselines.Ufv)...)
+	lines = append(lines, "", updatedFooter())
 
-	text := strings.Join([]string{
-		"<blockquote><b>☀️ Resumen Cotizaciones</b></blockquote>",
-		"🏛️ <b>Mercados:</b> BCB / Internacional",
-		"",
-		"🇪🇺 <b>Euro:</b>" + fmtDest(euro.MonedaDest),
-		fmt.Sprintf("💵 Venta:  <code>%.2f</code>", euro.Cotizacion),
-		fmt.Sprintf("🛒 Compra: <code>%.2f</code>", euro.Purchase),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(euro.Datetime)),
-		"",
-		"🥇 <b>Oro (Troy Oz):</b>" + fmtDest(oro.MonedaDest),
-		fmt.Sprintf("💵 Precio: <code>%.2f</code>", oro.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(oro.Datetime)),
-		"",
-		"🥈 <b>Plata (Troy Oz):</b>" + fmtDest(plata.MonedaDest),
-		fmt.Sprintf("💵 Precio: <code>%.2f</code>", plata.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(plata.Datetime)),
-		"",
-		"📐 <b>UFV:</b>" + fmtDest(ufv.MonedaDest),
-		fmt.Sprintf("💵 Valor:  <code>%.2f</code>", ufv.Cotizacion),
-		fmt.Sprintf("🕒 <i>%s</i>", fmtDT(ufv.Datetime)),
-		"",
-		fmt.Sprintf("📅 <i>Generado: %s</i>", generatedAt),
-	}, "\n")
-
-	btn := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("💸 Ver detalles en la Web", siteURL),
-		),
-	)
-
-	return text, btn
+	return strings.Join(lines, "\n"), webButton()
 }
 
 // ── Bot actions ───────────────────────────────────────────────────────────────

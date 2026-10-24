@@ -52,7 +52,11 @@ and overlapping runs are blocked by a flock at `/opt/osbo/cotizaciones.lock`
 `showReferencial` is false or the row is missing (retired 2026-06-30; a
 stale/0 value used to fake spikes). If `GetLatestSummary` fails, Telegram is
 skipped entirely. Config queries use `ORDER BY rowid` for read/write
-determinism.
+determinism. Since 2026-10-24 the text messages use compact quote blocks
+(`quoteRow`): head line with market + HH:MM, one price line, and a
+`▲/▼/● vs ayer` delta computed from `USDBaselines` (shared `buildTrend` with
+the images). `Compra` is hidden when the quote tracks no purchase (only USDT
+does); the trend line is hidden when no baseline exists — no fake zeros.
 
 Two independent messages are sent/edited:
 
