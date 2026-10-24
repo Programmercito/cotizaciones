@@ -285,19 +285,49 @@ func (b *imageBuilder) drawSingleRow(y int, title, valueLabel string, value floa
 	return y + 330
 }
 
+// saveTo writes the image atomically: encode into a temp file in the same
+// directory, then rename over the target. Readers (a second process, or a
+// Telegram upload in a previous/next run) never see a truncated or partial
+// JPG, which used to make uploads fail and trigger duplicate-message fallbacks.
 func (b *imageBuilder) saveTo(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	f, err := os.Create(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeded
+
 	if strings.EqualFold(filepath.Ext(path), ".jpg") || strings.EqualFold(filepath.Ext(path), ".jpeg") {
-		return jpeg.Encode(f, b.img, &jpeg.Options{Quality: 95})
+		err = jpeg.Encode(tmp, b.img, &jpeg.Options{Quality: 95})
+	} else {
+		err = png.Encode(tmp, b.img)
 	}
-	return png.Encode(f, b.img)
+	if err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		// Windows refuses to rename over an existing file; Linux (production)
+		// never gets here. Remove the target and retry once.
+		if rmErr := os.Remove(path); rmErr != nil {
+			return err
+		}
+		if err2 := os.Rename(tmpName, path); err2 != nil {
+			return fmt.Errorf("atomic rename failed: %w (retry: %v)", err, err2)
+		}
+	}
+	return nil
 }
 
 func formatDatetime(dt string) string {

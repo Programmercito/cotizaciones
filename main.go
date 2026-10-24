@@ -5,11 +5,13 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"cotizaciones/internal/api"
 	"cotizaciones/internal/db"
 	"cotizaciones/internal/git"
+	"cotizaciones/internal/lock"
 	"cotizaciones/internal/telegram"
 	"cotizaciones/internal/ui"
 
@@ -20,6 +22,7 @@ import (
 const (
 	jsonOutputPath = "/opt/codes/cotizaciones_ng/docs/data.json"
 	ngRepoPath     = "/opt/codes/cotizaciones_ng"
+	lockFilePath   = "/opt/osbo/cotizaciones.lock"
 	totalSteps     = 8
 )
 
@@ -29,6 +32,16 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		ui.Warn(".env no encontrado, usando variables de entorno del sistema")
 	}
+
+	// Prevent overlapping runs: a stuck previous execution sharing the fixed
+	// image paths or editing the same messages corrupts Telegram state and
+	// produces duplicate messages. Exit quietly; cron will run us again.
+	releaseLock, lockErr := lock.TryAcquire(lockFilePath)
+	if lockErr != nil {
+		ui.Warn(fmt.Sprintf("Otra ejecución está en curso (%v) — salteando esta corrida.", lockErr))
+		return
+	}
+	defer releaseLock()
 
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if token == "" {
@@ -65,9 +78,9 @@ func main() {
 	// 4. Telegram (non-fatal: errores no cortan el flujo)
 	ui.StepStart(4, totalSteps, "📨", "Procesando notificación de Telegram...")
 
-	summary, err := database.GetLatestSummary()
-	if err != nil {
-		ui.Warn(fmt.Sprintf("Error obteniendo resumen para Telegram: %v", err))
+	summary, summaryErr := database.GetLatestSummary()
+	if summaryErr != nil {
+		ui.Warn(fmt.Sprintf("Error obteniendo resumen para Telegram: %v", summaryErr))
 	}
 
 	showReferencial := telegram.ShowReferencial(time.Now())
@@ -103,6 +116,8 @@ func main() {
 	cfg, err := database.GetConfig()
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Error leyendo config, saltando Telegram: %v", err))
+	} else if summaryErr != nil {
+		ui.Warn("Resumen incompleto, saltando Telegram para no publicar datos inválidos.")
 	} else {
 		bot, err := telegram.New(token, cfg.ChatID)
 		if err != nil {
@@ -130,11 +145,34 @@ func main() {
 				return bot.SendMessage(text, silent, btn)
 			}
 
+			// editMsg edits an existing message without knowing its type
+			// (photo or text) up front. It tries the operations in a chain so a
+			// one-off photo fallback can no longer poison every later run:
+			//   - replace photo+caption (when an image exists)
+			//   - edit text (works on text messages)
+			//   - edit caption only (works on photo messages when no image)
+			// "message is not modified" and transient errors are already handled
+			// inside the bot methods; only a real failure here sends a new msg.
 			editMsg := func(imgPath string, mid int, text string, btn tgbotapi.InlineKeyboardMarkup) error {
+				var errs []string
 				if imgPath != "" {
-					return bot.EditPhoto(mid, imgPath, text, btn)
+					if err := bot.EditPhoto(mid, imgPath, text, btn); err == nil {
+						return nil
+					} else {
+						errs = append(errs, fmt.Sprintf("photo: %v", err))
+					}
 				}
-				return bot.EditMessage(mid, text, btn)
+				if err := bot.EditMessage(mid, text, btn); err == nil {
+					return nil
+				} else {
+					errs = append(errs, fmt.Sprintf("text: %v", err))
+				}
+				if err := bot.EditCaption(mid, text, btn); err == nil {
+					return nil
+				} else {
+					errs = append(errs, fmt.Sprintf("caption: %v", err))
+				}
+				return fmt.Errorf("todas las ediciones fallaron (msgID=%d) — %s", mid, strings.Join(errs, " | "))
 			}
 
 			// Threshold calculations must happen before any message is sent,
@@ -153,7 +191,7 @@ func main() {
 				currentUmbralRef = cfg.UmbralReferencial.Float64
 			}
 
-			hasUmbrales := !usdtUmbralNull && !refUmbralNull
+			hasUmbrales := !usdtUmbralNull && (!showReferencial || !refUmbralNull)
 
 			var diffUSDT, diffRef float64
 			var isOutside bool
@@ -161,7 +199,10 @@ func main() {
 				diffUSDT = data.Bid - currentUmbralUSDT
 				diffRef = usdRef.Cotizacion - currentUmbralRef
 				outsideUSDT := math.Abs(diffUSDT) > spikeThreshold
-				outsideRef := math.Abs(diffRef) > spikeThreshold
+				// The referencial only matters while it is still displayed and
+				// while we actually have a value for it. Otherwise a stale or
+				// cleaned-up row (Cotizacion=0) would fake a spike every run.
+				outsideRef := showReferencial && usdRef.Cotizacion > 0 && math.Abs(diffRef) > spikeThreshold
 				isOutside = outsideUSDT || outsideRef
 			}
 

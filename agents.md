@@ -34,6 +34,17 @@ Compact reference for the `cotizaciones` Go app.
 
 ## Telegram logic (the easy-to-break part)
 
+Robustness rules (since 2026-10): every API call retries transient failures
+(network/429/5xx) up to 3 attempts; `message is not modified` counts as
+SUCCESS (never triggers a new message); edits fall back through a chain
+(EditPhoto -> EditMessage -> EditCaption) because the stored messageID may
+point to a photo or a text message; only if ALL edits fail is a new message
+sent. Images are written atomically (temp + rename) and overlapping runs are
+blocked by a flock at `/opt/osbo/cotizaciones.lock` (skip = exit quietly).
+Spike detection ignores USD Referencial when `showReferencial` is false or
+the row is missing (retired 2026-06-30; a stale/0 value used to fake spikes).
+If `GetLatestSummary` fails, Telegram is skipped entirely.
+
 Two independent messages are sent/edited:
 
 **USD message** (`messageidusd`): USDT + USD Oficial + USD Referencial

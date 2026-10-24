@@ -2,6 +2,8 @@ package telegram
 
 import (
 	"cotizaciones/internal/db"
+	"cotizaciones/internal/ui"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -251,6 +253,65 @@ func FormatRestoMessage(summary map[string]db.Cotizacion) (string, tgbotapi.Inli
 
 // ── Bot actions ───────────────────────────────────────────────────────────────
 
+// isNotModified reports whether Telegram rejected an edit because the new
+// content is identical to the current one. This is a success signal for us:
+// the message already shows what we want, so we must NOT send a new message.
+func isNotModified(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "message is not modified")
+}
+
+// isTransient reports whether the error is worth retrying: Telegram 429 rate
+// limits, 5xx server errors, or plain network failures (DNS, timeouts, etc.).
+func isTransient(err error) bool {
+	if err == nil || isNotModified(err) {
+		return false
+	}
+	var tgErr tgbotapi.Error
+	if errors.As(err, &tgErr) {
+		return tgErr.Code == 429 || tgErr.Code >= 500
+	}
+	// Non-API errors are network level: transient by definition.
+	return true
+}
+
+// retryAfter extracts Telegram's suggested retry delay from a 429 response.
+func retryAfter(err error) time.Duration {
+	var tgErr tgbotapi.Error
+	if errors.As(err, &tgErr) && tgErr.RetryAfter > 0 {
+		return time.Duration(tgErr.RetryAfter) * time.Second
+	}
+	return 0
+}
+
+// send calls the Telegram API retrying transient failures with backoff.
+// "message is not modified" is surfaced to the caller (edits translate it
+// into a no-op success; sends never trigger it).
+func (b *Bot) send(cfg tgbotapi.Chattable) (tgbotapi.Message, error) {
+	const maxAttempts = 3
+	var lastErr error
+	delay := 2 * time.Second
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		msg, err := b.api.Send(cfg)
+		if err == nil || !isTransient(err) {
+			return msg, err
+		}
+		lastErr = err
+		if attempt < maxAttempts {
+			wait := delay
+			if ra := retryAfter(err); ra > wait {
+				wait = ra
+			}
+			ui.Warn(fmt.Sprintf("Falla transitoria de Telegram (intento %d/%d, reintento en %s): %v", attempt, maxAttempts, wait, err))
+			time.Sleep(wait)
+			delay *= 2
+		}
+	}
+	return tgbotapi.Message{}, lastErr
+}
+
 // SendMessage sends a new HTML message and returns its Telegram message ID.
 func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineKeyboardMarkup) (int, error) {
 	msg := tgbotapi.NewMessage(b.chatID, text)
@@ -259,7 +320,7 @@ func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineK
 	msg.DisableNotification = silent
 	msg.ReplyMarkup = replyMarkup
 
-	sent, err := b.api.Send(msg)
+	sent, err := b.send(msg)
 	if err != nil {
 		return 0, fmt.Errorf("error sending message: %w", err)
 	}
@@ -267,14 +328,18 @@ func (b *Bot) SendMessage(text string, silent bool, replyMarkup tgbotapi.InlineK
 	return sent.MessageID, nil
 }
 
-// EditMessage replaces the content of an existing message.
+// EditMessage replaces the content of an existing text message.
+// A "message is not modified" reply from Telegram is treated as success.
 func (b *Bot) EditMessage(messageID int, text string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {
 	edit := tgbotapi.NewEditMessageText(b.chatID, messageID, text)
 	edit.ParseMode = tgbotapi.ModeHTML
 	edit.DisableWebPagePreview = true
 	edit.ReplyMarkup = &replyMarkup
 
-	if _, err := b.api.Send(edit); err != nil {
+	if _, err := b.send(edit); err != nil {
+		if isNotModified(err) {
+			return nil
+		}
 		return fmt.Errorf("error editing message: %w", err)
 	}
 
@@ -289,7 +354,7 @@ func (b *Bot) SendPhoto(imagePath, caption string, silent bool, replyMarkup tgbo
 	photo.DisableNotification = silent
 	photo.ReplyMarkup = replyMarkup
 
-	sent, err := b.api.Send(photo)
+	sent, err := b.send(photo)
 	if err != nil {
 		return 0, fmt.Errorf("error sending photo: %w", err)
 	}
@@ -298,6 +363,7 @@ func (b *Bot) SendPhoto(imagePath, caption string, silent bool, replyMarkup tgbo
 }
 
 // EditPhoto replaces an existing photo message with a new image and caption.
+// A "message is not modified" reply from Telegram is treated as success.
 func (b *Bot) EditPhoto(messageID int, imagePath, caption string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {
 	media := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(imagePath))
 	media.Caption = caption
@@ -308,8 +374,30 @@ func (b *Bot) EditPhoto(messageID int, imagePath, caption string, replyMarkup tg
 		Media:    media,
 	}
 
-	if _, err := b.api.Send(edit); err != nil {
+	if _, err := b.send(edit); err != nil {
+		if isNotModified(err) {
+			return nil
+		}
 		return fmt.Errorf("error editing photo message: %w", err)
+	}
+
+	return nil
+}
+
+// EditCaption updates only the caption of an existing photo message without
+// re-uploading the image. It is the fallback for editing a photo message when
+// no image is available in this run, and it is treated as success when
+// Telegram replies "message is not modified".
+func (b *Bot) EditCaption(messageID int, caption string, replyMarkup tgbotapi.InlineKeyboardMarkup) error {
+	edit := tgbotapi.NewEditMessageCaption(b.chatID, messageID, caption)
+	edit.ParseMode = tgbotapi.ModeHTML
+	edit.ReplyMarkup = &replyMarkup
+
+	if _, err := b.send(edit); err != nil {
+		if isNotModified(err) {
+			return nil
+		}
+		return fmt.Errorf("error editing photo caption: %w", err)
 	}
 
 	return nil
