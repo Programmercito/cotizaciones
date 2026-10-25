@@ -1,4 +1,4 @@
-package telegram
+package social
 
 import (
 	"encoding/json"
