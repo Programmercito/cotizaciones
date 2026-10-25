@@ -19,8 +19,8 @@ Compact reference for the `cotizaciones` Go app.
 - Frontend repo: `/opt/codes/cotizaciones_ng`
 - JSON export: `/opt/codes/cotizaciones_ng/docs/data.json`
 - Telegram images (fixed, overwritten each run):
-  - `/opt/osbo/cotiza/usdt.jpg` (USDT + USD Oficial + USD Referencial)
-  - `/opt/osbo/cotiza/resto.jpg` (Euro + Oro + Plata + UFV)
+  - `/opt/osbo/cotiza/usd.jpg` (USDT + USD Oficial + USD Referencial)
+  - `/opt/osbo/cotiza/otros.jpg` (Euro + Oro + Plata + UFV)
 
 ## Core flow (main.go)
 
@@ -28,7 +28,7 @@ Compact reference for the `cotizaciones` Go app.
 2. Open SQLite DB (`modernc.org/sqlite`, WAL mode). Applies inline migrations: adds `purchase` and `umbral_referencial` and `messageidusd` columns if missing.
 3. Insert quote with `time.Now()` as timestamp (avoids duplicate key issues from API caching).
 4. Build summary from latest DB rows for: USDT, USD Oficial, USD Referencial, Euro, Oro, Plata, UFV.
-5. Generate **two** fixed JPG images in `/opt/osbo/cotiza/` (`usdt.jpg` and `resto.jpg`) with QR codes. Sent to Telegram if possible; falls back to text.
+5. Generate **two** fixed JPG images in `/opt/osbo/cotiza/` (`usd.jpg` and `otros.jpg`) with QR codes. Sent to Telegram if possible; falls back to text.
 6. Git: `ForcePull` frontend repo -> export JSON into it -> `CommitAndPush` with message `"data upload"`.
 7. Delete DB records older than **90 days** (`3 * 30 * 24h`).
 

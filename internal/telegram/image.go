@@ -355,7 +355,7 @@ func destSuffix(c db.Cotizacion) string {
 // GenerateUSDImage creates the production JPG with USDT, Official and optional
 // Referential quotes.
 func GenerateUSDImage(summary map[string]db.Cotizacion, showReferencial bool, baselines db.USDBaselines) (string, error) {
-	return GenerateUSDImageAt("/opt/osbo/cotiza/usdt.jpg", summary, showReferencial, baselines)
+	return GenerateUSDImageAt("/opt/osbo/cotiza/usd.jpg", summary, showReferencial, baselines)
 }
 
 // GenerateUSDImageAt creates a USD image at outPath. It is useful for local
@@ -403,7 +403,7 @@ func GenerateUSDImageAt(outPath string, summary map[string]db.Cotizacion, showRe
 
 // GenerateRestoImage creates a JPG with Euro, Oro, Plata and UFV quotes.
 func GenerateRestoImage(summary map[string]db.Cotizacion) (string, error) {
-	const outPath = "/opt/osbo/cotiza/resto.jpg"
+	const outPath = "/opt/osbo/cotiza/otros.jpg"
 	b, err := newImageBuilder(1200, 1500)
 	if err != nil {
 		return "", err
